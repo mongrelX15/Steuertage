@@ -1,5 +1,10 @@
 # Änderungsprotokoll
 
+## Noch nicht veröffentlicht
+
+- Automatische Erkennung: Ein vorhandener, aber derzeit nicht erreichbarer Homeoffice-Tracker wird als inaktives Signal behandelt. Ein fehlender Tracker bleibt prüfbedürftig.
+- Änderungsverlauf: Wiederholte Auswahl desselben Zustands oder „Automatisch“ erzeugt keinen wirkungslosen Verlaufseintrag.
+
 ## 0.2.0-beta.16
 
 - Kalender: „Mehrfachauswahl beenden“ hebt jetzt zugleich die Auswahl und den markierten Zeitraum auf.
