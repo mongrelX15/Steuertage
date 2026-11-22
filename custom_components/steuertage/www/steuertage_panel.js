@@ -589,6 +589,10 @@ class SteuertagePanel extends HTMLElement {
         "<span class='eyebrow'>SICHERUNG WIEDERHERSTELLEN</span><h3 id='restore-title'>Import prüfen</h3>" +
         "<p class='restore-summary'><strong>" + this._escape(this._pendingRestore.filename) + "</strong><br>" +
         this._pendingRestore.recordCount + " gespeicherte Tage für " + this._pendingRestore.matched.length + " eingerichtete Personen." +
+        (this._pendingRestore.backup.coverage?.from && this._pendingRestore.backup.coverage?.to
+          ? " Zeitraum: " + this._formatDate(this._pendingRestore.backup.coverage.from) + " bis " + this._formatDate(this._pendingRestore.backup.coverage.to) + "."
+          : "") +
+        (this._pendingRestore.backup.created_at ? " Erstellt am " + this._escape(new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(this._pendingRestore.backup.created_at))) + "." : "") +
         (this._pendingRestore.skipped ? " " + this._pendingRestore.skipped + " weitere Personen werden übersprungen." : "") + "</p>" +
         "<fieldset class='restore-options' " + (this._backupRestoring ? "disabled" : "") + "><legend>Wie sollen die gesicherten Tage eingetragen werden?</legend>" +
         "<label class='restore-option'><input type='radio' name='restore-strategy' value='merge_newer' checked><span><strong>Ergänzen</strong><small>Fehlende Tage hinzufügen und neuere lokale Änderungen behalten.</small></span></label>" +
@@ -650,14 +654,23 @@ class SteuertagePanel extends HTMLElement {
           records: personBackup.records,
         });
       }
+      const createdAt = new Date().toISOString();
+      const coverageDates = people.flatMap((person) => Object.keys(person.records || {}))
+        .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort();
+      const coverage = { from: coverageDates[0] || null, to: coverageDates[coverageDates.length - 1] || null };
       const backup = {
         format: "steuertage_backup",
         version: 2,
-        created_at: new Date().toISOString(),
+        created_at: createdAt,
+        coverage,
         people,
       };
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
       const recordCount = people.reduce((total, person) => total + Object.keys(person.records || {}).length, 0);
+      const createdLabel = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(createdAt));
+      const coverageLabel = coverage.from && coverage.to
+        ? this._formatDate(coverage.from) + " bis " + this._formatDate(coverage.to)
+        : "noch keine Tage gespeichert";
       this._preparedBackup = {
         blob,
         filename: "steuertage-sicherung-alle-personen.json",
@@ -667,7 +680,8 @@ class SteuertagePanel extends HTMLElement {
       this._setBackupNotice(
         "ready",
         "Sicherung erstellt",
-        recordCount + " Tage für " + people.length + " Personen sind bereit. Wähle „Datei speichern“, um den Speicherort festzulegen."
+        recordCount + " Tage für " + people.length + " Personen. Zeitraum: " + coverageLabel +
+        ". Erstellt am " + createdLabel + ". Wähle „Datei speichern“, um den Speicherort festzulegen."
       );
     } catch (error) {
       this._setBackupNotice("error", "Sicherung fehlgeschlagen", "Die Sicherung konnte nicht erstellt werden. Bitte melde dich mit einem Home-Assistant-Administrator an.");
