@@ -269,8 +269,11 @@ class WorklogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             office_seconds = int(existing.get("office_seconds", 0))
             homeoffice_seconds = int(existing.get("homeoffice_seconds", 0))
 
-        old_value = existing.get("manual_override") or automatic
         override = None if day_type == "automatic" else day_type
+        # Repeating the same selection is a no-op, not a new audit event.
+        if existing.get("manual_override") == override:
+            return
+        old_value = existing.get("manual_override") or automatic
         new_value = override or automatic
         change_history = append_manual_change(
             list(existing.get("change_history", [])),
@@ -402,16 +405,22 @@ class WorklogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if self.homeoffice_device_entity
                 else None
             )
-            device_valid = device is not None and device.state not in ("unknown", "unavailable")
+            device_present = device is not None
+            device_valid = device_present and device.state not in ("unknown", "unavailable")
             self._device_status = device.state if device else "unavailable"
-            self._device_source_valid = bool(device_valid)
+            # An existing tracker may be unavailable when its device is off.
+            # Treat that as an inactive signal, not as a broken configuration.
+            self._device_source_valid = bool(device_present)
             person_home = self._is_in_zone(person, self.home_zone_entity)
             device_home = self._is_in_zone(device, self.home_zone_entity)
             self._homeoffice_source_valid = bool(
-                person_valid and home_zone_valid and device_valid
+                person_valid and home_zone_valid and device_present
             )
             homeoffice_active = bool(
-                self._homeoffice_source_valid and person_home and device_home
+                self._homeoffice_source_valid
+                and device_valid
+                and person_home
+                and device_home
             )
             homeoffice_active, self._homeoffice_reason = detect_homeoffice(
                 person_valid,
