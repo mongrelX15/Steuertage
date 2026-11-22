@@ -20,8 +20,8 @@ make_storage_key = logic.make_storage_key
 normalize_day_record = logic.normalize_day_record
 
 
-def test_below_threshold_is_tracking():
-    assert classify_day(1799, 0, False, False, True, True) == "tracking"
+def test_below_threshold_active_office_signal_is_tracking():
+    assert classify_day(1799, 0, True, False, True, True) == "tracking"
 
 
 def test_threshold_classifies_home_office():
@@ -32,12 +32,12 @@ def test_threshold_classifies_office():
     assert classify_day(1800, 0, False, False, True, True) == "office"
 
 
-def test_missing_office_data_needs_review():
-    assert classify_day(0, 0, False, False, False, True) == "needs_review"
+def test_inactive_office_signal_is_no_work():
+    assert classify_day(0, 0, False, False, False, True) == "no_work"
 
 
-def test_missing_data_needs_review():
-    assert classify_day(0, 0, False, False, False, False) == "needs_review"
+def test_no_active_signal_is_no_work():
+    assert classify_day(0, 0, False, False, False, False) == "no_work"
 
 
 def test_inactive_empty_day():
