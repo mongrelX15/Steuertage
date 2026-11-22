@@ -1,5 +1,9 @@
 # Änderungsprotokoll
 
+## 0.3.0-beta.5
+
+- Temporäre Mehrfachauswahl: Bei mehreren markierten Tagen ersetzt „Auswahl aufheben“ den Schalter „Mehrfachauswahl“ und erscheint bereits ab zwei Tagen.
+- „Auswahl aufheben“ beendet die temporäre Auswahl und blendet die Wochentagsfilter wieder aus.
 ## 0.3.0-beta.4
 
 - Kalender: Ziehen über die Tage markiert den Bereich während der Mausbewegung zuverlässiger.
