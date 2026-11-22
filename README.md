@@ -4,7 +4,7 @@
 [![Status: Beta](https://img.shields.io/badge/status-Beta-orange)](https://github.com/mongrelX15/Steuertage/releases)
 [![Lizenz](https://img.shields.io/github/license/mongrelX15/Steuertage)](LICENSE)
 
-**Steuertage** hilft dabei, steuerlich relevante Arbeitstage in Home Assistant zu erfassen und auszuwerten. Die Integration erkennt Tage anhand deiner Zonen, optional deines Homeoffice-Signals und eines optionalen Arbeitskalenders. Im Seitenleisten-Panel kannst du Tage prüfen und manuell ändern, Auswertungen erstellen und deine Daten sichern.
+**Steuertage** hilft dabei, Arbeitsstätte- und Homeoffice-Tage für die Steuererklärung in Home Assistant zu erfassen und auszuwerten. Die Integration erkennt Tage anhand deiner Zonen, optional deines Homeoffice-Signals und eines optionalen Arbeitskalenders. Im Seitenleisten-Panel kannst du Tage prüfen und manuell ändern, Auswertungen erstellen und deine Daten sichern.
 
 > Steuertage ist eine Beta. Die App unterstützt die Erfassung; sie ersetzt keine steuerliche Beratung. Für Richtigkeit und Vollständigkeit der Steuererklärung bist du selbst verantwortlich. Alle Angaben ohne Gewähr.
 
