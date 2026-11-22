@@ -263,15 +263,37 @@ class WorklogCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             office_seconds = round(self._office_seconds)
             homeoffice_seconds = round(self._homeoffice_seconds)
         else:
+            office_seconds = int(existing.get("office_seconds", 0))
+            homeoffice_seconds = int(existing.get("homeoffice_seconds", 0))
             automatic = existing.get(
                 "automatic_day_type", existing.get("day_type", "no_work")
             )
-            office_seconds = int(existing.get("office_seconds", 0))
-            homeoffice_seconds = int(existing.get("homeoffice_seconds", 0))
+            if day_type == "automatic":
+                # Historical sensor states are not available live. Reclassify
+                # from the signal time totals saved for that date.
+                automatic = classify_day(
+                    office_seconds,
+                    homeoffice_seconds,
+                    False,
+                    False,
+                    True,
+                    True,
+                    threshold_seconds=self.threshold_seconds,
+                    homeoffice_enabled=self.homeoffice_enabled,
+                )
 
         override = None if day_type == "automatic" else day_type
-        # Repeating the same selection is a no-op, not a new audit event.
-        if existing.get("manual_override") == override:
+        new_value = override or automatic
+        # Repeating the same manual choice is a no-op. For "automatic", only
+        # skip if both the effective and stored automatic classifications match.
+        if override is not None and existing.get("manual_override") == override:
+            return
+        if (
+            override is None
+            and existing.get("manual_override") is None
+            and existing.get("day_type") == new_value
+            and existing.get("automatic_day_type") == automatic
+        ):
             return
         old_value = existing.get("manual_override") or automatic
         new_value = override or automatic
