@@ -504,7 +504,14 @@ class SteuertagePanel extends HTMLElement {
   }
 
   _configMarkup(calendars) {
-    const cards = calendars.map((calendar) => {
+    const preferredCalendar = this._preferredCalendarEntity(calendars);
+    const locale = this._hass?.locale?.language || "de-DE";
+    const orderedCalendars = [...calendars].sort((a, b) => {
+      if (a.entity_id === preferredCalendar?.entity_id) return -1;
+      if (b.entity_id === preferredCalendar?.entity_id) return 1;
+      return this._calendarLabel(a).localeCompare(this._calendarLabel(b), locale);
+    });
+    const cards = orderedCalendars.map((calendar) => {
       const a = calendar.attributes || {};
       const homeofficeEnabled = a.worklog_homeoffice_enabled !== false && a.worklog_homeoffice_enabled !== "false";
       const issues = this._configIssues(calendar, calendars);
