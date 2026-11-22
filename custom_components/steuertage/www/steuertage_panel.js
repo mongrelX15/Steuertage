@@ -1012,8 +1012,14 @@ class SteuertagePanel extends HTMLElement {
       /tagestyp|erkennungszeit/i.test((item.attributes.friendly_name || "") + " " + item.entity_id))
       .map((item) => "<li>" + this._escape(item.attributes.friendly_name || item.entity_id) + ": " + this._escape(item.state) + "</li>").join("");
     const calendars = this._calendarEntities();
-    const calendarTabs = calendars.length > 1
-      ? "<div class='person-tabs' role='group' aria-label='Kalender auswählen'>" + calendars.map((item) =>
+    const preferredCalendar = this._preferredCalendarEntity(calendars);
+    const calendarTabOrder = [...calendars].sort((a, b) => {
+      if (a.entity_id === preferredCalendar?.entity_id) return -1;
+      if (b.entity_id === preferredCalendar?.entity_id) return 1;
+      return this._calendarLabel(a).localeCompare(this._calendarLabel(b), locale);
+    });
+    const calendarTabs = calendarTabOrder.length > 1
+      ? "<div class='person-tabs' role='group' aria-label='Kalender auswählen'>" + calendarTabOrder.map((item) =>
           "<button type='button' class='person-tab' data-calendar='" + item.entity_id + "' aria-pressed='" +
           (item.entity_id === this._calendarEntityId ? "true" : "false") + "'>" +
           this._escape(this._calendarLabel(item)) + "</button>"
