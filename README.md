@@ -16,7 +16,7 @@
 - **Homeoffice, wenn benötigt:** Die Homeoffice-Erkennung ist optional. Bei Aktivierung werden Home-Zone und Device Tracker konfiguriert; im Kalender und in der Auswertung erscheinen Homeoffice-Tage nur für Personen mit eingeschalteter Homeoffice-Erkennung.
 - **Arbeitskalender, wenn benötigt:** Ein in Home Assistant eingebundener Kalender kann optional festlegen, wann ein Besuch der Arbeitszone als Arbeitstag zählt. Zeitgebundene und ganztägige Arbeitstermine werden berücksichtigt.
 - **Prüfen und korrigieren:** Offene Prüftage werden hervorgehoben. Du kannst einzelne Tage oder mehrere ausgewählte Tage manuell festlegen. Änderungen werden mit Zeitpunkt und Home-Assistant-Benutzer dokumentiert.
-- **Auswertung und Sicherung:** CSV-, TXT- und HTML-Auswertungen enthalten Summen, Monatsübersicht, Tagesliste und Prüfh Hinweise. Eine JSON-Sicherung umfasst die Verläufe aller eingerichteten Personen.
+- **Auswertung und Sicherung:** CSV-, TXT- und HTML-Auswertungen enthalten Summen, Monatsübersicht, Tagesliste und Prüfhinweise. Eine JSON-Sicherung umfasst die Verläufe aller eingerichteten Personen.
 
 ## Installation
 
