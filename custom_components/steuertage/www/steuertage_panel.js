@@ -436,6 +436,18 @@ class SteuertagePanel extends HTMLElement {
         this._rangeSelectionBounds.to,
         this._rangeSelectionBounds.target
       );
+    } else if ((this._multiSelectMode || this._selectionMode === "multiple") && this._selectedDates?.size) {
+      const filteredDates = new Set([...this._selectedDates].filter((date) => {
+        const parsed = new Date(date + "T12:00:00");
+        return !Number.isNaN(parsed.getTime()) && selected.has(parsed.getDay());
+      }));
+      this._selectedDates = filteredDates;
+      const ordered = [...filteredDates].sort();
+      this._selected = filteredDates.has(this._selected) ? this._selected : ordered.at(-1) || null;
+      this._selectionMode = filteredDates.size > 1 ? "multiple" : "single";
+      this._rangeAnchorDate = this._selected;
+      this._correctionFrom = ordered[0] || "";
+      this._correctionTo = ordered.at(-1) || "";
     }
     this._render();
   }
