@@ -4,6 +4,7 @@
 
 - Kalender: Die Legende zeigt nur Tagestypen und Zustände. Die manuelle Auswahl heißt jetzt „Zurück zur Automatik“.
 - Kalender: Der heutige Tag erhält eine dezente Umrandung, auch wenn er nicht ausgewählt ist.
+- Kalender: Manuell geänderte Tage erhalten statt des Handsymbols einen kleinen, dezenten Punkt.
 
 ## 0.2.0-beta.17
 
