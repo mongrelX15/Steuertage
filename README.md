@@ -48,7 +48,7 @@ Ohne Arbeitskalender zählt die erkannte Anwesenheit in der Arbeitszone. Ist ein
 
 Das Seitenleisten-Panel enthält die Bereiche **Kalender**, **Konfiguration** und **Daten & Export**. Die Oberfläche passt sich an das aktive Home-Assistant-Theme und den Hell-/Dunkelmodus an.
 
-Im Kalender siehst du Tagesstatus, Monatsstatistik, Wochenenden und Hinweise auf manuelle Änderungen. Mehrere Tage lassen sich über Ziehen, Umschalt-Klick oder ⌘-Klick (Mac) beziehungsweise Strg-Klick (Windows/Linux) auswählen. Arbeitsstätte und Homeoffice können am selben Tag als Mischtag erfasst werden; dabei zählt der Tag insgesamt nur einmal.
+Im Kalender siehst du Tagesstatus, Monatsstatistik, Wochenenden und Hinweise auf manuelle Änderungen. Mehrere Tage lassen sich über Ziehen, Umschalt-Klick oder ⌘-Klick (Mac) beziehungsweise Strg-Klick (Windows/Linux) auswählen. Für Ziehen und Umschalt-Klick kannst du die einzubeziehenden Wochentage pro Person festlegen, etwa „Wochenende auslassen“ oder ein individuelles Vier-Tage-Muster. Die Einstellung dient nur als Markierhilfe; einzelne Klicks und Feiertage bleiben auswählbar. Arbeitsstätte und Homeoffice können am selben Tag als Mischtag erfasst werden; dabei zählt der Tag insgesamt nur einmal.
 
 Im Bereich **Daten & Export** kannst du Steuerjahre oder eigene Zeiträume auswählen. Monatsübersicht, Tagesliste und Änderungsverlauf lassen sich aufklappen. Die Exportdateien enthalten nur Tage, die Steuertage erfasst hat. Manuell als „Kein Arbeitstag“ markierte Tage werden nicht als Arbeitstage gezählt oder exportiert.
 
