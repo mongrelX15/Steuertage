@@ -1,63 +1,78 @@
 # Steuertage
 
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Integration-41BDF5?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
-[![Status](https://img.shields.io/badge/status-Beta-orange)](#installation-und-einrichtung)
+[![Status: Beta](https://img.shields.io/badge/status-Beta-orange)](https://github.com/mongrelX15/Steuertage/releases)
+[![Lizenz](https://img.shields.io/github/license/mongrelX15/Steuertage)](LICENSE)
 
-**Steuertage** erfasst Tage mit Arbeitsstätte und Homeoffice für die Steuererklärung. Erfasste Zeit dient ausschließlich zur Berechnung, ob die Tagesschwelle erreicht wurde; im Kalender werden keine Arbeitsstunden angezeigt.
+**Steuertage** hilft dabei, steuerlich relevante Arbeitstage in Home Assistant zu erfassen und auszuwerten. Die Integration erkennt Tage anhand deiner Zonen, optional deines Homeoffice-Signals und eines optionalen Arbeitskalenders. Im Seitenleisten-Panel kannst du Tage prüfen und manuell ändern, Auswertungen erstellen und deine Daten sichern.
 
-## Installation und Einrichtung
+> Steuertage ist eine Beta. Die App unterstützt die Erfassung; sie ersetzt keine steuerliche Beratung. Für Richtigkeit und Vollständigkeit der Steuererklärung bist du selbst verantwortlich. Alle Angaben ohne Gewähr.
 
-Die Integration wird unter **Einstellungen → Geräte & Dienste → Integration hinzufügen → Steuertage** eingerichtet. Alle Angaben werden in einem Dialog erfasst. Pro Person wird eine eigene Instanz angelegt:
+## Was Steuertage kann
 
-- **Person**: Home-Assistant-Person
-- **Arbeitsstätte (Zone)**: verpflichtend; gemeint ist der Ort, zu dem du für deine Arbeit fährst und dessen Besuche für Wegstrecken-Angaben relevant sein können. Die Zone dient der Anwesenheitserkennung.
-- **Mindestanwesenheit**: erforderlich; bestimmt, wie lange ein Aufenthalt in einer relevanten Zone dauern muss, damit ein Tag automatisch zählt. Der Standardwert beträgt 2 Stunden; der Wert ist in 0,5-Stunden-Schritten einstellbar.
-- **Homeoffice-Erkennung**: optional. Wenn aktiviert, sind Home-Zone und `device_tracker` erforderlich.
-- **Arbeitskalender**: optional. Wenn aktiviert, muss ein in Home Assistant eingebundener Arbeitskalender ausgewählt werden.
-- **Standardkalender**: wird anhand des angemeldeten Benutzers und der Benutzerzuordnung in der jeweiligen Home-Assistant-Person ausgewählt.
+- **Kalender für mehrere Personen:** Jede eingerichtete Person erhält einen eigenen Verlauf. Die Ansicht wählt nach Möglichkeit automatisch die Person aus, die deinem Home-Assistant-Benutzer zugeordnet ist.
+- **Automatische Erkennung:** Aufenthaltszeiten werden intern ausgewertet. Der Standard-Schwellwert beträgt 2 Stunden und lässt sich pro Person anpassen. Arbeitsstunden werden nicht als Tagesübersicht angezeigt.
+- **Arbeitsstätte:** Eine verpflichtende Arbeitszone erkennt Besuche am Ort, zu dem du für die Arbeit fährst und für den Wegstrecken relevant sein können.
+- **Homeoffice, wenn benötigt:** Die Homeoffice-Erkennung ist optional. Bei Aktivierung werden Home-Zone und Device Tracker konfiguriert; im Kalender und in der Auswertung erscheinen Homeoffice-Tage nur für Personen mit eingeschalteter Homeoffice-Erkennung.
+- **Arbeitskalender, wenn benötigt:** Ein in Home Assistant eingebundener Kalender kann optional festlegen, wann ein Besuch der Arbeitszone als Arbeitstag zählt. Zeitgebundene und ganztägige Arbeitstermine werden berücksichtigt.
+- **Prüfen und korrigieren:** Offene Prüftage werden hervorgehoben. Du kannst einzelne Tage oder mehrere ausgewählte Tage manuell festlegen. Änderungen werden mit Zeitpunkt und Home-Assistant-Benutzer dokumentiert.
+- **Auswertung und Sicherung:** CSV-, TXT- und HTML-Auswertungen enthalten Summen, Monatsübersicht, Tagesliste und Prüfh Hinweise. Eine JSON-Sicherung umfasst die Verläufe aller eingerichteten Personen.
 
-Ist Homeoffice aktiviert, zählt das Signal nur, wenn die Person und der ausgewählte Tracker beide in der eingestellten Home-Zone erkannt werden. Ein fehlender oder nicht verfügbarer Tracker wird nicht als Homeoffice gezählt. Bei deaktiviertem Homeoffice bleiben Home-Zone und Tracker optionale Angaben und sind nicht erforderlich; Homeoffice-Typen entfallen im Kalender und in der Auswertung. Dieser Anwesenheitsstatus ist kein Nachweis tatsächlicher Arbeitsleistung.
+## Installation
 
-Ein Tag mit Arbeit vor Ort oder Homeoffice zählt, sobald das jeweilige Signal den pro Person eingestellten Schwellwert erreicht. Der Standard beträgt 2 Stunden. Wenn „Arbeitskalender verwenden“ aktiviert ist, zählt Arbeitszonenzeit nur während eines laufenden zeitgebundenen oder ganztägigen Arbeitstermins. So wird ein Aufenthalt an der Arbeitsadresse außerhalb einer eingetragenen Schicht nicht automatisch gewertet. Ohne Arbeitskalender bleibt die Erkennung über die Arbeitszone aktiv. Die Zeitmessung wird intern je Person getrennt geführt und erscheint nicht als Stundenübersicht.
+Solange Steuertage noch nicht im offiziellen HACS-Store gelistet ist, installierst du das Repository als benutzerdefiniertes HACS-Repository:
 
-## Mehrere Personen und Kalender
+1. Öffne in Home Assistant **HACS → Integrationen** und wähle im Menü **Benutzerdefinierte Repositories**.
+2. Füge `mongrelX15/Steuertage` als Repository vom Typ **Integration** hinzu.
+3. Installiere **Steuertage** über HACS und starte Home Assistant neu.
+4. Öffne **Einstellungen → Geräte & Dienste → Integration hinzufügen**, suche nach **Steuertage** und folge dem Einrichtungsdialog.
+5. Öffne anschließend **Steuertage** über die Seitenleiste.
 
-Jede Person erhält einen eigenen Kalender, Tagestyp-Sensor und getrennten lokalen Verlauf. Der Homeoffice-Sensor wird nur angelegt, wenn Homeoffice für diese Person aktiviert ist. Derselbe Arbeits- oder Home-Zonenbereich kann von mehreren Personen verwendet werden; eine Person und ein Homeoffice-Gerät können jeweils nur einer Konfiguration zugeordnet sein.
+Für eine Beta wähle in HACS die gewünschte veröffentlichte Beta-Version aus. Die aktuelle Versionsnummer und Änderungen stehen auf der [Releases-Seite](https://github.com/mongrelX15/Steuertage/releases).
 
-Das Panel **Steuertage** wird einmalig in der Seitenleiste angelegt. Es ermöglicht allen angemeldeten Benutzern den Wechsel zwischen eingerichteten Kalendern und manuelle Korrekturen. Home Assistant wählt den Kalender der Person, die mit dem angemeldeten Benutzer verknüpft ist, als Standardansicht; Kalender-Tabs bleiben verfügbar. Verknüpfe Benutzer und Person dazu in den Home-Assistant-Personeneinstellungen.
+## Einrichtung
 
-Manuelle Korrekturen werden der betroffenen Person und dem angemeldeten HA-Benutzer zugeordnet. Die Historie speichert Zeitpunkt sowie alten und neuen Status. Ein übergebener Benutzername wird nicht als Identität verwendet.
+Pro Person wird eine eigene Steuertage-Konfiguration angelegt. Für die Erkennung werden folgende Angaben verwendet:
 
-## Kalender und Panel
+| Einstellung | Erforderlich? | Zweck |
+| --- | --- | --- |
+| Home-Assistant-Person | Ja | Ordnet Erkennung und Verlauf einer Person zu. |
+| Arbeitsstätte (Zone) | Ja | Erkennt Anwesenheit am Arbeitsort. |
+| Erkennungsschwelle | Ja | Mindestdauer eines passenden Signals. Standard: 2 Stunden. |
+| Homeoffice-Erkennung | Nein | Schaltet Homeoffice als Tagestyp hinzu. Bei Aktivierung werden Home-Zone und Device Tracker benötigt. |
+| Arbeitskalender | Nein | Begrenzt die automatische Wertung der Arbeitszone auf Arbeitstermine im eingebundenen Home-Assistant-Kalender. |
 
-Der Kalender zeigt Tagesstatus, Wochenenden, Monatsstatistik und dezente Hinweise auf manuell geänderte Tage. Manuelle Korrekturen lassen sich auf einen einzelnen Tag oder einen Zeitraum bis zu 366 Tagen anwenden. Das Panel übernimmt die aktiven Theme-Farben und den Hell-/Dunkelmodus von Home Assistant. Der **Konfigurator** zeigt die Personeneinstellungen, prüft benötigte Entitäten und führt direkt zu den Home-Assistant-Optionen. Er erklärt die automatische Erkennung, den optionalen Arbeitskalender und den pro Person einstellbaren Schwellwert (Standard 2 Stunden). Der **Export** erlaubt einen Jahres- oder frei gewählten Zeitraum und erstellt CSV-, TXT- und HTML-Dateien mit Gesamtsummen, Monatsübersicht, Tagesliste und Prüfliste für ungeklärte oder noch laufende Erkennung. „Arbeit vor Ort + Homeoffice“ wird als eigene Kategorie und als ein Arbeitstag gezählt. Eine JSON-Sicherung enthält die Verläufe aller in Steuertage eingerichteten Personen. Beim Wiederherstellen kannst du fehlende Tage ergänzen und neuere lokale Änderungen behalten oder die gesicherten Einträge der enthaltenen Tage ersetzen. Tage, die nicht in der Sicherung stehen, bleiben erhalten. Sicherung und Wiederherstellung erfordern einen Home-Assistant-Administrator. Die Auswertung berücksichtigt nur Tage, die von Steuertage erfasst wurden. Steuertage unterstützt die automatische Erfassung relevanter Daten auf Grundlage der in Home Assistant vorhandenen Erkennung; für Richtigkeit und Vollständigkeit der Steuererklärung ist der Nutzer selbst verantwortlich. Angaben ohne Gewähr.
+Ohne Arbeitskalender zählt die erkannte Anwesenheit in der Arbeitszone. Ist ein Arbeitskalender ausgewählt, zählt die Arbeitszone nur während eines passenden laufenden Termins. Ein Homeoffice-Gerät, das nach der Arbeit ausgeschaltet oder nicht erreichbar ist, gilt nicht als Homeoffice-Signal.
 
-## Hinweis zum Umstieg von HA Work-Log
+## Kalender und Auswertung
 
-Diese Version verwendet die neue Integrations-Domain `steuertage` und den Ordner `custom_components/steuertage`. Sie ist daher ein Neustart und kein direktes Upgrade der bisherigen `ha_worklog`-Integration. Entferne die alte HA Work-Log-Integration in Home Assistant und sichere benötigte Daten vorher separat. Anschließend installierst du Steuertage neu und richtest die Personen erneut ein. Alte Konfigurationen und lokale Verläufe werden nicht automatisch übernommen.
+Das Seitenleisten-Panel enthält die Bereiche **Kalender**, **Konfiguration** und **Daten & Export**. Die Oberfläche passt sich an das aktive Home-Assistant-Theme und den Hell-/Dunkelmodus an.
 
-## Homeoffice-Konfigurationen aus älteren Betas
+Im Kalender siehst du Tagesstatus, Monatsstatistik, Wochenenden und Hinweise auf manuelle Änderungen. Mehrere Tage lassen sich über Ziehen, Umschalt-Klick oder ⌘-Klick (Mac) beziehungsweise Strg-Klick (Windows/Linux) auswählen. Arbeitsstätte und Homeoffice können am selben Tag als Mischtag erfasst werden; dabei zählt der Tag insgesamt nur einmal.
 
-Beim Upgrade bleibt die bestehende Konfiguration und der lokale Verlauf unter derselben Integrations-ID erhalten. Ältere Einträge können in den Optionen zunächst weiterhin den bisherigen Homeoffice-Binary-Sensor nutzen. Für die neue Erkennung kann ein `device_tracker` ausgewählt werden; danach wird der bisherige Sensor nicht mehr für die automatische Erkennung verwendet.
+Im Bereich **Daten & Export** kannst du Steuerjahre oder eigene Zeiträume auswählen. Monatsübersicht, Tagesliste und Änderungsverlauf lassen sich aufklappen. Die Exportdateien enthalten nur Tage, die Steuertage erfasst hat. Manuell als „Kein Arbeitstag“ markierte Tage werden nicht als Arbeitstage gezählt oder exportiert.
 
-Bei der Umstellung werden frühere Datensätze nach Möglichkeit übernommen. Vergangene Tage, die vor der ersten Erfassung nicht gespeichert wurden, lassen sich nicht nachträglich rekonstruieren.
+## Sicherung und Wiederherstellung
 
-## Installation und Test
+Die Steuertage-Sicherung enthält die Verläufe aller in der Integration eingerichteten Personen, unabhängig von der aktuell angezeigten Person. Für das Erstellen und Wiederherstellen ist ein Home-Assistant-Administrator erforderlich.
 
-1. Installiere die Beta über HACS oder den Beta-Zweig des Repositories.
-2. Starte Home Assistant neu oder lade Steuertage neu.
-3. Öffne **Einstellungen → Geräte & Dienste → Steuertage** und prüfe die Personeneinstellungen und neuen Entitäten.
-4. Füge eine weitere Person über **Integration hinzufügen → Steuertage** hinzu und öffne anschließend das Seitenleisten-Panel.
+Beim Wiederherstellen gibt es zwei Möglichkeiten:
 
-Entfernen: Integration in Home Assistant löschen, danach den Ordner `custom_components/steuertage` entfernen und Home Assistant neu starten.
+- **Ergänzen:** Fehlende Einträge aus der Sicherung werden ergänzt; vorhandene lokale Änderungen bleiben bestehen.
+- **Ersetzen:** Einträge für Tage, die in der Sicherung enthalten sind, werden durch den Sicherungsstand ersetzt. Tage, die nicht in der Sicherung stehen, bleiben unverändert.
 
-## Projekt und Entwicklungsgrundsätze
+Eine Wiederherstellung betrifft nur Personen, die aktuell in Steuertage eingerichtet sind. Bewahre zusätzlich ein aktuelles Home-Assistant-Backup auf.
 
-Steuertage wird mit KI-Unterstützung entwickelt (Vibecoding). Anforderungen und fachliche Entscheidungen kommen vom Projektverantwortlichen. Änderungen werden in Git zunächst im `beta`-Zweig erprobt; geprüfte Änderungen werden später als stabile Version in `main` veröffentlicht.
+## Umstieg von HA Work-Log
 
-Beta-Versionen können unvollständig sein oder Fehler enthalten. Ein Test in einer separaten Home-Assistant-Testinstanz wird empfohlen.
+Steuertage verwendet die Integrations-Domain `steuertage` und ist kein direktes Upgrade der bisherigen `ha_worklog`-Integration. Sichere benötigte Daten, entferne HA Work-Log und richte Steuertage neu ein. Alte Konfigurationen und lokale Verläufe werden nicht automatisch übernommen.
 
+## Hilfe und Rückmeldungen
 
-## Versionshinweise
+Fehler, Fragen und Vorschläge kannst du über [GitHub Issues](https://github.com/mongrelX15/Steuertage/issues) melden. Bitte füge keine Zugangsdaten, privaten Adressen oder personenbezogenen Kalenderdaten bei.
 
-Änderungen je Version findest du in den [GitHub Release Notes](https://github.com/mongrelX15/Steuertage/releases).
+## Entwicklung
+
+Steuertage entsteht mit KI-Unterstützung und wird zunächst im `beta`-Zweig erprobt. Geprüfte Änderungen werden später als stabile Version in `main` veröffentlicht. Beta-Versionen können unvollständig sein oder Fehler enthalten.
+
+Änderungen pro Version findest du in den [GitHub Release Notes](https://github.com/mongrelX15/Steuertage/releases).
