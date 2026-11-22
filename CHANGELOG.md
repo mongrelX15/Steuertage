@@ -1,11 +1,17 @@
 # Änderungsprotokoll
 
-## Noch nicht veröffentlicht
+## 0.2.0-beta.16
 
-- Kalender: „Mehrfachauswahl beenden“ hebt zugleich alle markierten Tage und den Zeitraum auf.
-- Bedienung: Tastenkürzel einschließlich Esc wurden vorerst vollständig entfernt. Änderungen erfolgen über die Schaltflächen; die Auswahl wird mit den Kalenderbuttons gesteuert.
-- Einrichtung: Leere optionale Home-Zone, Homeoffice-Gerät und Arbeitskalender blockieren das Speichern nicht mehr; vorhandene Werte bleiben beim Bearbeiten vorausgewählt.
-- Daten & Export: Die Personenauswahl nutzt in der mobilen Ansicht die verfügbare Breite und ragt nicht mehr aus dem Bildschirm.
+- Kalender: „Mehrfachauswahl beenden“ hebt jetzt zugleich die Auswahl und den markierten Zeitraum auf.
+- Bedienung: Tastenkürzel einschließlich Esc wurden entfernt. Tagestypen werden über die Schaltflächen gesetzt; Mausgesten und die Auswahlbuttons steuern die Mehrfachauswahl.
+- Einrichtung: Optionale Home-Zone, optionales Homeoffice-Gerät und optionaler Arbeitskalender blockieren das Speichern nicht mehr, wenn die jeweilige Funktion ausgeschaltet ist. Beim Bearbeiten bleiben vorhandene Werte vorausgewählt.
+- Daten & Export: Die Personenauswahl passt sich in der mobilen Ansicht an die verfügbare Breite an.
+
+## 0.2.0-beta.15
+
+- Tastenkürzel reagierten auf Klein- und Großbuchstaben und wurden während Speichervorgängen nacheinander verarbeitet.
+- Mehrfachauswahl, Zeitraum-Markierung, Legendenfarbe und Info-Symbol wurden angepasst.
+- Alte Krankheits- und Urlaubseinträge bleiben manuell und werden beim Zurücksetzen nicht als automatische Erkennung übernommen.
 
 ## 0.2.0-beta.14
 
