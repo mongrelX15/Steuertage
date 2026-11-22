@@ -2,7 +2,7 @@
 
 ## Noch nicht veröffentlicht
 
-- Automatische Erkennung: Ein vorhandener, aber derzeit nicht erreichbarer Homeoffice-Tracker wird als inaktives Signal behandelt. Ein fehlender Tracker bleibt prüfbedürftig.
+- Automatische Erkennung: Nur ein aktives Signal in der Arbeitszone oder ein erkanntes Homeoffice-Gerät zählt. Ohne aktives Signal – auch bei einem fehlenden oder nicht erreichbaren Gerät – wird der Tag als „Kein Arbeitstag“ bewertet. Unterschwellige Zeiten zählen erst weiter, solange das Signal aktiv ist.
 - Änderungsverlauf: Wiederholte Auswahl desselben Zustands oder „Automatisch“ erzeugt keinen wirkungslosen Verlaufseintrag.
 
 ## 0.2.0-beta.16
