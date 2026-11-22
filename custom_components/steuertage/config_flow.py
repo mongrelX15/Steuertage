@@ -26,6 +26,20 @@ from .const import (
 from .logic import find_person_configuration_conflicts
 
 
+def _optional_entity_field(
+    fields: dict[Any, Any],
+    key: str,
+    domain: str,
+    defaults: dict[str, Any],
+) -> None:
+    """Add an entity selector that stays optional when left blank."""
+    default = defaults.get(key)
+    marker = vol.Optional(key, default=default) if default else vol.Optional(key)
+    fields[marker] = selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=domain)
+    )
+
+
 def _setup_schema(
     defaults: dict[str, Any] | None = None, *, include_person: bool = True
 ) -> vol.Schema:
@@ -58,24 +72,15 @@ def _setup_schema(
         CONF_HOME_OFFICE_ENABLED,
         default=bool(defaults.get(CONF_HOME_OFFICE_ENABLED, False)),
     )] = selector.BooleanSelector()
-    fields[vol.Optional(
-        CONF_HOME_ZONE,
-        default=defaults.get(CONF_HOME_ZONE) or "",
-    )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="zone"))
-    fields[vol.Optional(
-        CONF_DEVICE_TRACKER,
-        default=defaults.get(CONF_DEVICE_TRACKER) or "",
-    )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="device_tracker"))
+    _optional_entity_field(fields, CONF_HOME_ZONE, "zone", defaults)
+    _optional_entity_field(fields, CONF_DEVICE_TRACKER, "device_tracker", defaults)
     fields[vol.Required(
         CONF_WORK_CALENDAR_ENABLED,
         default=bool(defaults.get(
             CONF_WORK_CALENDAR_ENABLED, bool(defaults.get(CONF_WORK_CALENDAR))
         )),
     )] = selector.BooleanSelector()
-    fields[vol.Optional(
-        CONF_WORK_CALENDAR,
-        default=defaults.get(CONF_WORK_CALENDAR) or "",
-    )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="calendar"))
+    _optional_entity_field(fields, CONF_WORK_CALENDAR, "calendar", defaults)
     return vol.Schema(fields)
 
 
