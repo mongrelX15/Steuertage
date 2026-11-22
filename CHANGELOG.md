@@ -1,5 +1,10 @@
 # Änderungsprotokoll
 
+## Noch nicht veröffentlicht
+
+- Kalender: Die Legende zeigt nur Tagestypen und Zustände. Die manuelle Auswahl heißt jetzt „Zurück zur Automatik“.
+- Kalender: Der heutige Tag erhält eine dezente Umrandung, auch wenn er nicht ausgewählt ist.
+
 ## 0.2.0-beta.17
 
 - Automatische Erkennung: Ein Tag wird erst gezählt, wenn der Schwellwert erreicht ist. Solange ein Signal aktiv ist und noch Zeit fehlt, erscheint „Erkennung läuft“; ohne aktives Signal gilt „Kein Arbeitstag“.
