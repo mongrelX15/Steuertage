@@ -31,15 +31,10 @@ def classify_day(
         return "office"
     if homeoffice_qualifies:
         return "home_office"
-    if (
-        office_active
-        or homeoffice_active
-        or office_seconds > 0
-        or (homeoffice_enabled and homeoffice_seconds > 0)
-    ):
+    if office_active or homeoffice_active:
         return "tracking"
-    if not office_source_valid or not homeoffice_source_valid:
-        return "needs_review"
+    # A signal that has stopped before reaching the threshold does not make
+    # the date a workday. Missing or unavailable sources also mean no signal.
     return "no_work"
 
 
