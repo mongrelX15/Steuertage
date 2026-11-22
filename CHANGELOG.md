@@ -5,6 +5,7 @@
 - Kalender: Die Legende zeigt nur Tagestypen und Zustände. Die manuelle Auswahl heißt jetzt „Zurück zur Automatik“.
 - Kalender: Der heutige Tag erhält eine dezente Umrandung, auch wenn er nicht ausgewählt ist.
 - Kalender: Manuell geänderte Tage erhalten statt des Handsymbols einen kleinen, dezenten Punkt.
+- Kalender: „Zurück zur Automatik“ klassifiziert vergangene Tage erneut anhand der für den Tag gespeicherten Signalzeiten und des Schwellwerts.
 
 ## 0.2.0-beta.17
 
