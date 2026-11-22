@@ -1149,6 +1149,7 @@ class SteuertagePanel extends HTMLElement {
           : null;
         this._dragBaseDates = new Set(this._selectedDates || []);
         this._dragStartApplied = false;
+        this._dragPointerId = event.pointerId;
         if (multiGesture) {
           this._selectionMode = "multiple";
           this._selected = button.dataset.date;
@@ -1161,14 +1162,41 @@ class SteuertagePanel extends HTMLElement {
           this._correctionFrom = button.dataset.date;
           this._correctionTo = button.dataset.date;
         }
+        const updateDragDate = (date) => {
+          if (!this._dragSelecting || !date) return;
+          if (date !== this._dragStartDate) this._dragMoved = true;
+          if (this._dragMultiGesture) {
+            if (!this._dragStartApplied) {
+              this._applyMultiDragDate(this._dragStartDate);
+              this._dragStartApplied = true;
+            }
+            this._applyMultiDragDate(date);
+            return;
+          }
+          this._applyFilteredRange(this._dragStartDate, date, date);
+          this._updateVisibleDateSelection(this._selectedDates);
+        };
+        const moveDrag = (moveEvent) => {
+          if (!this._dragSelecting || moveEvent.pointerId !== this._dragPointerId) return;
+          const dateCell = [...this.shadowRoot.querySelectorAll("[data-date]")].find((cell) => {
+            const rect = cell.getBoundingClientRect();
+            return moveEvent.clientX >= rect.left && moveEvent.clientX <= rect.right &&
+              moveEvent.clientY >= rect.top && moveEvent.clientY <= rect.bottom;
+          });
+          updateDragDate(dateCell?.dataset.date);
+        };
         const finishDrag = (finishEvent) => {
+          window.removeEventListener("pointermove", moveDrag);
           window.removeEventListener("pointerup", finishDrag);
           window.removeEventListener("pointercancel", finishDrag);
+          if (finishEvent.pointerId !== this._dragPointerId) return;
+          this._dragPointerId = null;
           if (!this._dragSelecting) return;
           this._dragSelecting = false;
           if (finishEvent.type === "pointercancel") this._dragMoved = false;
           else if (this._dragMoved) setTimeout(() => this._render(), 0);
         };
+        window.addEventListener("pointermove", moveDrag, { passive: true });
         window.addEventListener("pointerup", finishDrag);
         window.addEventListener("pointercancel", finishDrag);
       });
