@@ -1240,14 +1240,6 @@ class SteuertagePanel extends HTMLElement {
         const updateDragDate = (date) => {
           if (!this._dragSelecting || !date) return;
           if (date !== this._dragStartDate) this._dragMoved = true;
-          if (this._dragMultiGesture) {
-            if (!this._dragStartApplied) {
-              this._applyMultiDragDate(this._dragStartDate);
-              this._dragStartApplied = true;
-            }
-            this._applyMultiDragDate(date);
-            return;
-          }
           this._applyFilteredRange(this._dragStartDate, date, date);
           this._updateVisibleDateSelection(this._selectedDates);
         };
@@ -1279,14 +1271,6 @@ class SteuertagePanel extends HTMLElement {
         if (!this._dragSelecting) return;
         const date = button.dataset.date;
         if (date !== this._dragStartDate) this._dragMoved = true;
-        if (this._dragMultiGesture) {
-          if (!this._dragStartApplied) {
-            this._applyMultiDragDate(this._dragStartDate);
-            this._dragStartApplied = true;
-          }
-          this._applyMultiDragDate(date);
-          return;
-        }
         this._applyFilteredRange(this._dragStartDate, date, date);
         this._updateVisibleDateSelection(this._selectedDates);
       });
@@ -1305,8 +1289,10 @@ class SteuertagePanel extends HTMLElement {
           else dates.add(date);
           const ordered = [...dates].sort();
           this._selectedDates = dates;
-          this._selectionMode = "multiple";
+          this._selectionMode = dates.size > 1 ? "multiple" : "single";
           this._selected = dates.has(date) ? date : ordered.at(-1) || null;
+          this._rangeAnchorDate = date;
+          this._rangeSelectionBounds = null;
           this._correctionFrom = ordered[0] || "";
           this._correctionTo = ordered.at(-1) || "";
           this._render();
