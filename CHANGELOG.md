@@ -2,20 +2,8 @@
 
 ## Noch nicht veröffentlicht
 
-- Kalender: „Mehrfachauswahl beenden“ hebt jetzt zugleich alle markierten Tage und den Zeitraum auf.
-- Tastenkürzel: Die Kürzel H und K wurden entfernt; Homeoffice und Krankheit bleiben über die Auswahlbuttons verfügbar.
-- Tastenkürzel: Großbuchstaben funktionieren auch mit gedrückter Umschalttaste; Ziffer 0 wird über Haupttastenreihe und Ziffernblock erkannt. Weitere Kürzel während eines Speichervorgangs werden nacheinander verarbeitet.
-- Tastenkürzel: Escape hebt die Auswahl inklusive sichtbarer Zeitraum-Umrandung auf.
-- Kalender: Ziehen im Mehrfachauswahl-Modus markiert oder entfernt den gesamten Bereich zwischen Start- und Zieltag.
-- Legende: automatische Erkennung und „Erkennung läuft“ verwenden den lila Kalenderfarbton.
-- Infofenster: Das Symbol sitzt oben rechts im allgemeinen App-Kopf und ist von allen Tabs erreichbar.
-- Datenmigration: ältere Krankheits- und Urlaubseinträge bleiben manuell und werden beim Zurücksetzen nicht als automatische Erkennung übernommen.
-- Kalender: Esc löscht auch den gespeicherten Auswahlzeitraum, damit nach dem Leeren keine Tagesumrandungen stehen bleiben.
-- Kalender: Ziehen im Mehrfachauswahl-Modus markiert oder entfernt wieder den vollständigen Datumsbereich zwischen Start- und Zieltag.
-- Infofenster: Das Symbol sitzt jetzt oben rechts im allgemeinen App-Kopf und ist von allen Tabs aus erreichbar.
-- Legende: Punkte für die automatische Erkennung und „Erkennung läuft“ lila an die Kalenderdarstellung angepasst.
-- Datenmigration: ältere Krankheits- und Urlaubseinträge werden als manuelle Änderungen behandelt. Beim Zurücksetzen auf automatisch kann die automatische Erkennung diese Abwesenheitstypen nicht mehr übernehmen; ohne Signal wird stattdessen der passende automatische Status angezeigt.
-
+- Kalender: „Mehrfachauswahl beenden“ hebt zugleich alle markierten Tage und den Zeitraum auf.
+- Bedienung: Tastenkürzel einschließlich Esc wurden vorerst vollständig entfernt. Änderungen erfolgen über die Schaltflächen; die Auswahl wird mit den Kalenderbuttons gesteuert.
 
 ## 0.2.0-beta.14
 
