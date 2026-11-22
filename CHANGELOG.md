@@ -1,5 +1,13 @@
 # Änderungsprotokoll
 
+## 0.3.0-beta.4
+
+- Kalender: Ziehen über die Tage markiert den Bereich während der Mausbewegung zuverlässiger.
+- Kalender: „Rückgängig“ und „Wiederholen“ machen Änderungen wieder verfügbar; eine Mehrfachänderung zählt als ein Schritt. Der Verlauf gilt pro Person und bis zum Schließen oder Neuladen des Panels.
+- Kalender: „Kein Arbeitstag“ steht in der Legende vor „Erkennung läuft“; ein dezenter Trenner hebt den Erkennungsstatus ab.
+- Daten & Export: Monats-, Tages- und Änderungszahlen sind in einer gemeinsamen Spalte ausgerichtet. Geöffnete Bereiche bleiben bei einer Aktualisierung des Panels geöffnet.
+- App-Symbol: Das ursprüngliche Koffer-Icon aus Beta 1/2 hat eine deutlich sichtbare weiße Kontur.
+- App-Cache: Jede Panel-Version erhält eine URL mit eigenem Inhalts-Hash, damit Home Assistant eine aktualisierte Oberfläche laden kann.
 ## 0.3.0-beta.3
 
 - Kalender: Die angemeldete Person erscheint im ersten Tab; weitere Personen folgen alphabetisch. Die Konfiguration verwendet dieselbe Reihenfolge.
