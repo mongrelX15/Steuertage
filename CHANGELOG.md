@@ -4,6 +4,8 @@
 
 - Kalender: „Mehrfachauswahl beenden“ hebt zugleich alle markierten Tage und den Zeitraum auf.
 - Bedienung: Tastenkürzel einschließlich Esc wurden vorerst vollständig entfernt. Änderungen erfolgen über die Schaltflächen; die Auswahl wird mit den Kalenderbuttons gesteuert.
+- Einrichtung: Leere optionale Home-Zone, Homeoffice-Gerät und Arbeitskalender blockieren das Speichern nicht mehr; vorhandene Werte bleiben beim Bearbeiten vorausgewählt.
+- Daten & Export: Die Personenauswahl nutzt in der mobilen Ansicht die verfügbare Breite und ragt nicht mehr aus dem Bildschirm.
 
 ## 0.2.0-beta.14
 
