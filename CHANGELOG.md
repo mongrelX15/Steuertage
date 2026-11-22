@@ -1,11 +1,10 @@
 # Änderungsprotokoll
 
-## Noch nicht veröffentlicht
+## 0.3.0-beta.3
 
-- Kalender: Die Legende zeigt nur Tagestypen und Zustände. Die manuelle Auswahl heißt jetzt „Zurück zur Automatik“.
-- Kalender: Der heutige Tag erhält eine dezente Umrandung, auch wenn er nicht ausgewählt ist.
-- Kalender: Manuell geänderte Tage erhalten statt des Handsymbols einen kleinen, dezenten Punkt.
-- Kalender: „Zurück zur Automatik“ klassifiziert vergangene Tage erneut anhand der für den Tag gespeicherten Signalzeiten und des Schwellwerts.
+- Kalender: Die angemeldete Person erscheint im ersten Tab; weitere Personen folgen alphabetisch. Die Konfiguration verwendet dieselbe Reihenfolge.
+- Kalender: Manuell geänderte Tage sind mit einem dezenten Sternchen markiert, auch in der Legende.
+- App-Symbol: Das ursprüngliche Koffer-Icon aus Beta 1/2 hat eine deutlich sichtbare weiße Kontur für bessere Erkennbarkeit im Dark Mode.
 
 ## 0.2.0-beta.17
 
