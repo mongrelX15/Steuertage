@@ -1254,13 +1254,6 @@ class SteuertagePanel extends HTMLElement {
         outline: 2px solid var(--primary-color);
         outline-offset: 2px;
       }
-      @media (max-width: 650px) {
-        .top { grid-template-rows: 44px auto; }
-        .top .top-actions { gap: 6px; }
-      }
-      @media (max-width: 650px), (pointer: coarse) {
-        .top-actions .top-action { inline-size: 44px; block-size: 44px; }
-      }
     `;
     const calendarStyles = `
       .calendar-head > h2, .calendar-head > .calendar-navigation { grid-row: 1; }
