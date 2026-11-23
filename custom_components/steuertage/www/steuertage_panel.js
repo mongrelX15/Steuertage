@@ -4,8 +4,6 @@ class SteuertagePanel extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._tab = "calendar";
     this._month = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    this._selected = null;
-      this._rangeAnchorDate = null;
     this._calendarEntityId = null;
     this._activeUserId = null;
     this._calendarInitialized = false;
@@ -29,14 +27,9 @@ class SteuertagePanel extends HTMLElement {
     this._exportYear = new Date().getFullYear();
     this._exportFrom = this._exportYear + "-01-01";
     this._exportTo = this._exportYear + "-12-31";
-    this._correctionFrom = "";
-    this._correctionTo = "";
-    this._selectedDates = new Set();
-    this._rangeAnchorDate = null;
     this._multiSelectMode = false;
-    this._selectionMode = "single";
+    this._clearDateSelection();
     this._rangeWeekdaySettings = new Map();
-    this._rangeSelectionBounds = null;
     this._editHistoryByPerson = new Map();
     this._openDisclosures = new Set();
   }
@@ -73,8 +66,7 @@ class SteuertagePanel extends HTMLElement {
       this._events = [];
       this._exportEvents = null;
       this._exportKey = "";
-      this._selected = null;
-      this._rangeAnchorDate = null;
+      this._clearDateSelection();
       selectionChanged = true;
     } else if (!this._calendarInitialized && calendars.length) {
       const calendar = this._calendarEntity();
@@ -430,69 +422,48 @@ class SteuertagePanel extends HTMLElement {
     try {
       localStorage.setItem("steuertage-range-weekdays:" + key, JSON.stringify([...selected]));
     } catch (error) { /* Keep the setting for this panel session. */ }
-    if (this._rangeSelectionBounds && this._selectionMode === "range") {
-      this._applyFilteredRange(
-        this._rangeSelectionBounds.from,
-        this._rangeSelectionBounds.to,
-        this._rangeSelectionBounds.target
-      );
-    } else if ((this._multiSelectMode || this._selectionMode === "multiple") && this._selectedDates?.size) {
-      const filteredDates = new Set([...this._selectedDates].filter((date) => {
-        const parsed = new Date(date + "T12:00:00");
-        return !Number.isNaN(parsed.getTime()) && selected.has(parsed.getDay());
-      }));
-      this._selectedDates = filteredDates;
-      const ordered = [...filteredDates].sort();
-      this._selected = filteredDates.has(this._selected) ? this._selected : ordered.at(-1) || null;
-      this._selectionMode = filteredDates.size > 1 ? "multiple" : "single";
-      this._rangeAnchorDate = this._selected;
-      this._correctionFrom = ordered[0] || "";
-      this._correctionTo = ordered.at(-1) || "";
+    if (this._rangeSelectionBounds) {
+      const { from, to } = this._rangeSelectionBounds;
+      this._applyFilteredRange(from, to);
+    } else if (this._multiSelectMode || this._selectedDates.size > 1) {
+      const filteredDates = new Set([...this._selectedDates].filter((date) =>
+        selected.has(new Date(date + "T12:00:00").getDay())
+      ));
+      this._setDateSelection(filteredDates, this._selected);
     }
     this._render();
   }
 
-  _applyFilteredRange(from, to, target) {
+  _setDateSelection(dates, target, range = null) {
+    const ordered = [...dates].sort();
+    this._selectedDates = dates;
+    this._selected = dates.has(target) ? target : ordered.at(-1) ?? null;
+    this._rangeAnchorDate = range?.from ?? this._selected;
+    this._rangeSelectionBounds = range;
+    this._selectionMode = range ? "range" : dates.size > 1 ? "multiple" : "single";
+    this._correctionFrom = range ? (range.from < range.to ? range.from : range.to) : ordered[0] ?? "";
+    this._correctionTo = range ? (range.from > range.to ? range.from : range.to) : ordered.at(-1) ?? "";
+  }
+
+  _selectDate(date, toggle = this._multiSelectMode) {
+    const dates = toggle ? new Set(this._selectedDates) : new Set();
+    if (dates.has(date)) dates.delete(date);
+    else dates.add(date);
+    this._setDateSelection(dates, date);
+  }
+
+  _applyFilteredRange(from, to, { baseDates = null, remove = false } = {}) {
     const start = new Date((from < to ? from : to) + "T12:00:00");
     const end = new Date((from > to ? from : to) + "T12:00:00");
     const weekdays = this._rangeWeekdays();
-    const dates = new Set();
+    const dates = new Set(baseDates);
     for (let cursor = new Date(start), limit = 0; cursor <= end && limit < 366; cursor.setDate(cursor.getDate() + 1), limit++) {
-      if (weekdays.has(cursor.getDay())) dates.add(this._isoDate(cursor));
+      if (!weekdays.has(cursor.getDay())) continue;
+      const date = this._isoDate(cursor);
+      if (remove) dates.delete(date);
+      else dates.add(date);
     }
-    this._rangeSelectionBounds = { from, to, target };
-    this._selectedDates = dates;
-    this._selectionMode = "range";
-    const ordered = [...dates].sort();
-    this._selected = dates.has(target) ? target : ordered.at(-1) || null;
-    this._correctionFrom = from < to ? from : to;
-    this._correctionTo = from > to ? from : to;
-  }
-
-  _applyMultiDragDate(date) {
-    const dates = new Set(this._dragBaseDates);
-    this._rangeSelectionBounds = null;
-    const from = this._dragStartDate < date ? this._dragStartDate : date;
-    const to = this._dragStartDate > date ? this._dragStartDate : date;
-    const start = new Date(from + "T12:00:00");
-    const end = new Date(to + "T12:00:00");
-    for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
-      const rangeDate = this._isoDate(cursor);
-      if (!this._rangeWeekdays().has(cursor.getDay())) continue;
-      if (this._dragMultiAction === "add") dates.add(rangeDate);
-      else dates.delete(rangeDate);
-    }
-    this._selectedDates = dates;
-    this._selectionMode = "multiple";
-    this._selected = dates.has(date) ? date : [...dates].sort().at(-1) || null;
-    const ordered = [...dates].sort();
-    this._correctionFrom = ordered[0] || "";
-    this._correctionTo = ordered.at(-1) || "";
-    this._updateVisibleDateSelection(dates);
-    const hint = this.shadowRoot.querySelector(".selection-hint");
-    if (hint) hint.textContent = dates.size === 0
-      ? "Keine Tage ausgewählt"
-      : dates.size === 1 ? "1 Tag ausgewählt" : dates.size + " Tage ausgewählt";
+    this._setDateSelection(dates, to, baseDates ? null : { from, to });
   }
 
   _updateVisibleDateSelection(dates) {
@@ -507,17 +478,13 @@ class SteuertagePanel extends HTMLElement {
     }
     const clearButton = this.shadowRoot.querySelector("[data-action='clear-selection']");
     if (clearButton) clearButton.hidden = dates.size < 2;
+    const hint = this.shadowRoot.querySelector(".selection-hint");
+    if (hint) hint.textContent = dates.size === 1 ? "1 Tag ausgewählt" : dates.size + " Tage ausgewählt";
   }
 
 
   _clearDateSelection() {
-    this._selected = null;
-    this._selectedDates = new Set();
-    this._rangeAnchorDate = null;
-    this._rangeSelectionBounds = null;
-    this._selectionMode = "single";
-    this._correctionFrom = "";
-    this._correctionTo = "";
+    this._setDateSelection(new Set(), null);
   }
 
   _showMessage(message) {
@@ -1189,7 +1156,7 @@ class SteuertagePanel extends HTMLElement {
     const content = tab === "calendar"
       ? (this._calendarEntity() ? "<ha-card>" + calendarTabs + calendarHeaderMarkup + rangeFilterMarkup +
         historyButtonsMarkup + openReviewMarkup + "<div class='grid'>" + headers + cells + "</div>" +
-        "<div class='calendar-legend'><div class='legend-status'><strong>Legende</strong><span><i class='legend-dot office-dot'></i>Arbeitsstätte</span><span><i class='legend-dot home-dot'></i>Homeoffice</span><span><i class='legend-dot vacation-dot'></i>Urlaub</span><span><i class='legend-dot sick-dot'></i>Krankheit</span><span><i class='legend-dot no-work-dot'></i>Kein Arbeitstag</span><span class='legend-divider' aria-hidden='true'></span><span class='legend-pulse'><i class='legend-dot tracking-dot'></i>Erkennung läuft</span><span><i class='mixed-legend-mark'>M</i>Mischtag</span><span><i class='manual-legend-mark' aria-hidden='true'>✦</i>Manuell geändert</span></div></div>" + selectedPanelMarkup + "<p class='muted calendar-help'><span class='calendar-help-desktop'>Ziehe mit der Maus über mehrere Tage. Umschalt-Klick wählt den Bereich vom Ankertag bis zum Zieltag einschließlich. Mit ⌘ (Mac) oder Strg kannst du einzelne Tage hinzufügen oder abwählen.</span><span class='calendar-help-mobile'>Aktiviere die Mehrfachauswahl und tippe einzelne Tage an, um sie hinzuzufügen oder abzuwählen.</span> Mit „Auswahl aufheben“ löschst du die Markierung; „Mehrfachauswahl beenden“ beendet den Modus und hebt die Markierung ebenfalls auf.</p></ha-card>" : calendars.length > 1 ? "<ha-card>" + calendarTabs + "<p>Bitte wähle eine Person aus, um den Kalender zu öffnen.</p></ha-card>" : "<ha-card><p>Es ist noch keine Person für Steuertage eingerichtet.</p></ha-card>")
+        "<div class='calendar-legend'><div class='legend-status'><strong>Legende</strong><span><i class='legend-dot office-dot'></i>Arbeitsstätte</span><span><i class='legend-dot home-dot'></i>Homeoffice</span><span><i class='legend-dot vacation-dot'></i>Urlaub</span><span><i class='legend-dot sick-dot'></i>Krankheit</span><span><i class='legend-dot no-work-dot'></i>Kein Arbeitstag</span><span class='legend-divider' aria-hidden='true'></span><span class='legend-pulse'><i class='legend-dot tracking-dot'></i>Erkennung läuft</span><span><i class='mixed-legend-mark'>M</i>Mischtag</span><span><i class='manual-legend-mark' aria-hidden='true'>✦</i>Manuell geändert</span></div></div>" + selectedPanelMarkup + "<p class='muted calendar-help'><span class='calendar-help-desktop'>Ziehe mit der Maus über mehrere Tage. Umschalt-Klick wählt den Bereich vom Ankertag bis zum Zieltag einschließlich. Im Mehrfachmodus fügt Umschalt-Klick den Bereich zur Auswahl hinzu. Mit ⌘ (Mac) oder Strg kannst du einzelne Tage hinzufügen oder abwählen.</span><span class='calendar-help-mobile'>Aktiviere die Mehrfachauswahl und tippe einzelne Tage an, um sie hinzuzufügen oder abzuwählen.</span> Mit „Auswahl aufheben“ löschst du die Markierung; „Mehrfachauswahl beenden“ beendet den Modus und hebt die Markierung ebenfalls auf.</p></ha-card>" : calendars.length > 1 ? "<ha-card>" + calendarTabs + "<p>Bitte wähle eine Person aus, um den Kalender zu öffnen.</p></ha-card>" : "<ha-card><p>Es ist noch keine Person für Steuertage eingerichtet.</p></ha-card>")
       : tab === "config" ? this._configMarkup(calendars) : this._exportMarkup(calendars);
     const calendarStyles = `
       .calendar-head > h2, .calendar-head > .calendar-navigation,
@@ -1354,10 +1321,8 @@ class SteuertagePanel extends HTMLElement {
         dragMoved = false;
         const startDate = button.dataset.date;
         let lastDate = startDate;
-        const multiGesture = this._multiSelectMode;
-        this._dragStartDate = startDate;
-        this._dragBaseDates = new Set(this._selectedDates);
-        this._dragMultiAction = this._dragBaseDates.has(startDate) ? "remove" : "add";
+        const baseDates = this._multiSelectMode ? new Set(this._selectedDates) : null;
+        const remove = baseDates?.has(startDate) ?? false;
 
         const moveDrag = (moveEvent) => {
           if (moveEvent.pointerId !== event.pointerId) return;
@@ -1369,13 +1334,8 @@ class SteuertagePanel extends HTMLElement {
           if (!date || date === lastDate) return;
           lastDate = date;
           dragMoved = true;
-          this._rangeAnchorDate = startDate;
-          if (multiGesture) {
-            this._applyMultiDragDate(date);
-          } else {
-            this._applyFilteredRange(startDate, date, date);
-            this._updateVisibleDateSelection(this._selectedDates);
-          }
+          this._applyFilteredRange(startDate, date, { baseDates, remove });
+          this._updateVisibleDateSelection(this._selectedDates);
         };
         const stopDrag = () => {
           window.removeEventListener("pointermove", moveDrag);
@@ -1397,63 +1357,25 @@ class SteuertagePanel extends HTMLElement {
         const date = button.dataset.date;
         if (dragMoved) return;
         if (event.shiftKey) {
-          const anchor = this._rangeAnchorDate || this._selected || date;
-          this._applyFilteredRange(anchor, date, date);
-          this._render();
-          return;
+          const anchor = this._rangeAnchorDate || date;
+          const baseDates = this._multiSelectMode ? this._selectedDates : null;
+          this._applyFilteredRange(anchor, date, { baseDates });
+        } else {
+          this._selectDate(date, this._multiSelectMode || event.metaKey || event.ctrlKey);
         }
-        if (this._multiSelectMode && !event.shiftKey) {
-          const dates = new Set(this._selectedDates);
-          if (dates.has(date)) dates.delete(date);
-          else dates.add(date);
-          const ordered = [...dates].sort();
-          this._selectedDates = dates;
-          this._selectionMode = dates.size > 1 ? "multiple" : "single";
-          this._selected = dates.has(date) ? date : ordered.at(-1) || null;
-          this._rangeAnchorDate = date;
-          this._rangeSelectionBounds = null;
-          this._correctionFrom = ordered[0] || "";
-          this._correctionTo = ordered.at(-1) || "";
-          this._render();
-          return;
-        }
-        if (event.metaKey || event.ctrlKey) {
-          const dates = new Set(this._selectedDates);
-          if (dates.has(date)) dates.delete(date);
-          else dates.add(date);
-          this._selectedDates = dates;
-          this._selectionMode = dates.size > 1 ? "multiple" : "single";
-          this._selected = dates.has(date) ? date : [...dates].sort().at(-1) || null;
-          this._correctionFrom = dates.size ? [...dates].sort()[0] : "";
-          this._correctionTo = dates.size ? [...dates].sort().at(-1) : "";
-          this._render();
-          return;
-        }
-        this._selected = date;
-        this._rangeAnchorDate = date;
-        this._rangeSelectionBounds = null;
-        this._selectionMode = "single";
-        this._selectedDates = new Set([date]);
-        this._multiSelectMode = false;
-        this._correctionFrom = date;
-        this._correctionTo = date;
         this._render();
       });
     });
     this.shadowRoot.querySelector("[data-action='prev']")?.addEventListener("click", () => {
       this._month = new Date(this._month.getFullYear(), this._month.getMonth() - 1, 1);
-      this._selected = null;
-      this._rangeAnchorDate = null;
-      this._selectedDates = new Set();
-      this._selectionMode = "single";
+      this._clearDateSelection();
       this._loadedMonth = "";
       this._render();
       this._loadEvents();
     });
     this.shadowRoot.querySelector("[data-action='multi-select']")?.addEventListener("click", () => {
       this._multiSelectMode = !this._multiSelectMode;
-      if (this._multiSelectMode) this._selectionMode = "multiple";
-      else this._clearDateSelection();
+      if (!this._multiSelectMode) this._clearDateSelection();
       this._render();
     });
     this.shadowRoot.querySelector("[data-action='clear-selection']")?.addEventListener("click", () => {
@@ -1465,23 +1387,18 @@ class SteuertagePanel extends HTMLElement {
     this.shadowRoot.querySelector("[data-action='today']")?.addEventListener("click", () => {
       const today = new Date();
       const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      if (this._isoDate(currentMonth) !== this._isoDate(this._month)) this._loadedMonth = "";
+      if (this._isoDate(currentMonth) !== this._isoDate(this._month)) {
+        this._clearDateSelection();
+        this._loadedMonth = "";
+      }
       this._month = currentMonth;
-      this._selected = this._isoDate(today);
-      this._rangeAnchorDate = this._selected;
-      this._selectedDates = new Set([this._selected]);
-      this._selectionMode = "single";
-      this._correctionFrom = this._selected;
-      this._correctionTo = this._selected;
+      this._selectDate(this._isoDate(today));
       this._render();
       this._loadEvents();
     });
     this.shadowRoot.querySelector("[data-action='next']")?.addEventListener("click", () => {
       this._month = new Date(this._month.getFullYear(), this._month.getMonth() + 1, 1);
-      this._selected = null;
-      this._rangeAnchorDate = null;
-      this._selectedDates = new Set();
-      this._selectionMode = "single";
+      this._clearDateSelection();
       this._loadedMonth = "";
       this._render();
       this._loadEvents();
@@ -1493,10 +1410,7 @@ class SteuertagePanel extends HTMLElement {
       this._calendarInitialized = true;
       this._loadedMonth = "";
       this._events = [];
-      this._selected = null;
-      this._rangeAnchorDate = null;
-      this._selectedDates = new Set();
-      this._selectionMode = "single";
+      this._clearDateSelection();
       this._render();
       await this._loadEvents();
     }));
@@ -1536,7 +1450,8 @@ class SteuertagePanel extends HTMLElement {
     this.shadowRoot.querySelector("[data-export-calendar]")?.addEventListener("change", (event) => {
       this._calendarEntityId = event.target.value; this._calendarInitialized = true;
       this._loadedMonth = ""; this._events = []; this._exportKey = ""; this._exportEvents = null;
-      this._selected = null; this._render();
+      this._clearDateSelection();
+      this._render();
       if (this._tab === "calendar") this._loadEvents();
       if (this._tab === "export") this._loadExportEvents();
     });
@@ -1552,11 +1467,12 @@ class SteuertagePanel extends HTMLElement {
     this.shadowRoot.querySelector("[data-restore-cancel]")?.addEventListener("click", () => this._cancelRestore());
     this.shadowRoot.querySelector("[data-restore-confirm]")?.addEventListener("click", () => this._restoreBackup());
     this.shadowRoot.querySelectorAll("[data-review-date]").forEach((button) => button.addEventListener("click", () => {
-      const parts = button.dataset.reviewDate.split("-").map(Number);
-      this._month = new Date(parts[0], parts[1] - 1, 1); this._selected = button.dataset.reviewDate;
-      this._rangeAnchorDate = this._selected;
-      this._selectedDates = new Set([button.dataset.reviewDate]); this._selectionMode = "single";
-      this._correctionFrom = button.dataset.reviewDate; this._correctionTo = button.dataset.reviewDate;
+      const date = button.dataset.reviewDate;
+      const [year, month] = date.split("-").map(Number);
+      const reviewMonth = new Date(year, month - 1, 1);
+      if (this._isoDate(reviewMonth) !== this._isoDate(this._month)) this._clearDateSelection();
+      this._month = reviewMonth;
+      this._selectDate(date);
       this._tab = "calendar"; this._loadedMonth = ""; this._render(); this._loadEvents();
     }));
     this.shadowRoot.querySelectorAll("[data-type]").forEach((button) => button.addEventListener("click", async () => {
