@@ -1,3 +1,5 @@
+const TRACKING_STATUS_LABEL = "Erkennung läuft – bitte warten";
+
 class SteuertagePanel extends HTMLElement {
   constructor() {
     super();
@@ -590,7 +592,7 @@ class SteuertagePanel extends HTMLElement {
       (workCalendar ? " Mit Arbeitskalender zählt die Anwesenheit dort nur während eines laufenden passenden Eintrags; zeitgebundene und ganztägige Einträge werden berücksichtigt." : " Ohne Arbeitskalender zählt die Anwesenheit in der Arbeitszone.") + "</li>" +
       (homeofficeEnabled ? "<li><b>Homeoffice:</b> Es zählt nur, wenn die zugeordnete Person und der ausgewählte Tracker gleichzeitig in der Home-Zone sind.</li>" : "<li><b>Homeoffice:</b> Die Erkennung ist für diese Person ausgeschaltet.</li>") +
       "<li>Ein passendes Signal zählt, sobald die eingestellte Mindestdauer von <b>" + threshold + " Stunden</b> erreicht ist. Der Standardwert beträgt 2 Stunden und kann pro Person geändert werden.</li>" +
-      "<li>Solange ein passendes Anwesenheitssignal aktiv ist und die Mindestdauer noch nicht erreicht ist, steht beim Tag „Erkennung läuft“. Du kannst die Erkennung einfach weiterlaufen lassen.</li>" +
+      "<li>Solange ein passendes Anwesenheitssignal aktiv ist und die Mindestdauer noch nicht erreicht ist, steht beim Tag „" + TRACKING_STATUS_LABEL + "“.</li>" +
       "<li>„Bitte prüfen“ kennzeichnet einen Tag, dessen Eintrag du kontrollieren solltest.</li>" +
       "<li>Arbeitstage, Urlaub und Krankheit kannst du im Kalender manuell setzen oder ändern. Der Änderungsverlauf hält manuelle Änderungen fest.</li></ul></section><nav class='config-info-links' aria-label='Weitere Informationen'><a href='https://github.com/mongrelX15/Steuertage' target='_blank' rel='noopener noreferrer'>Repository öffnen ↗</a><a href='https://github.com/mongrelX15/Steuertage/issues/new' target='_blank' rel='noopener noreferrer'>Frage oder Änderungswunsch stellen ↗</a></nav></div></dialog>";
   }
@@ -1081,7 +1083,7 @@ class SteuertagePanel extends HTMLElement {
           const date = (event.start || "").slice(0, 10);
           const type = this._type(event);
           return "<button class='review-day-chip " + (type === "needs_review" ? "needs-review" : "tracking") + "' data-review-date='" + date + "'><span>" +
-            this._formatDate(date) + "</span><small>" + (type === "needs_review" ? "Bitte prüfen" : "Erkennung läuft") + "</small></button>";
+            this._formatDate(date) + "</span><small>" + (type === "needs_review" ? "Bitte prüfen" : TRACKING_STATUS_LABEL) + "</small></button>";
         }).join("") +
         (openReviewItems.length > 8 ? "<span class='review-more'>+" + (openReviewItems.length - 8) + " weitere</span>" : "") +
         "</div></section>"
@@ -1090,9 +1092,10 @@ class SteuertagePanel extends HTMLElement {
     const automaticSelection = !selectedEvent ||
       !(selectedEvent.description || "").includes("Manuell geändert zu:");
     const selectedType = automaticSelection ? "automatic" : detectedType;
+    const detectedLabel = detectedType === "tracking" ? TRACKING_STATUS_LABEL : this._label(detectedType);
     const selectedLabel = (automaticSelection
-      ? "Automatik · " + (detectedType ? this._label(detectedType) : "Noch kein Eintrag")
-      : this._label(detectedType)) + (this._isMixedEvent(selectedEvent) ? " · Mischtag" : "");
+      ? "Automatik · " + (detectedType ? detectedLabel : "Noch kein Eintrag")
+      : detectedLabel) + (this._isMixedEvent(selectedEvent) ? " · Mischtag" : "");
     const selectedDates = this._selectedDates || new Set(this._selected ? [this._selected] : []);
     const selectedDateCount = selectedDates.size;
     const rangeWeekdays = this._rangeWeekdays();
