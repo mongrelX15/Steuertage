@@ -590,7 +590,8 @@ class SteuertagePanel extends HTMLElement {
       (workCalendar ? " Mit Arbeitskalender zählt die Anwesenheit dort nur während eines laufenden passenden Eintrags; zeitgebundene und ganztägige Einträge werden berücksichtigt." : " Ohne Arbeitskalender zählt die Anwesenheit in der Arbeitszone.") + "</li>" +
       (homeofficeEnabled ? "<li><b>Homeoffice:</b> Es zählt nur, wenn die zugeordnete Person und der ausgewählte Tracker gleichzeitig in der Home-Zone sind.</li>" : "<li><b>Homeoffice:</b> Die Erkennung ist für diese Person ausgeschaltet.</li>") +
       "<li>Ein passendes Signal zählt, sobald die eingestellte Mindestdauer von <b>" + threshold + " Stunden</b> erreicht ist. Der Standardwert beträgt 2 Stunden und kann pro Person geändert werden.</li>" +
-      "<li>Vor Erreichen der Mindestdauer zeigt der Tag „Erkennung läuft“. „Bitte prüfen“ weist auf eine fehlende oder ungültige erforderliche Quelle hin.</li>" +
+      "<li>Solange ein passendes Anwesenheitssignal aktiv ist und die Mindestdauer noch nicht erreicht ist, steht beim Tag „Erkennung läuft“. Du kannst die Erkennung einfach weiterlaufen lassen.</li>" +
+      "<li>„Bitte prüfen“ kennzeichnet einen Tag, dessen Eintrag du kontrollieren solltest.</li>" +
       "<li>Arbeitstage, Urlaub und Krankheit kannst du im Kalender manuell setzen oder ändern. Der Änderungsverlauf hält manuelle Änderungen fest.</li></ul></section><nav class='config-info-links' aria-label='Weitere Informationen'><a href='https://github.com/mongrelX15/Steuertage' target='_blank' rel='noopener noreferrer'>Repository öffnen ↗</a><a href='https://github.com/mongrelX15/Steuertage/issues/new' target='_blank' rel='noopener noreferrer'>Frage oder Änderungswunsch stellen ↗</a></nav></div></dialog>";
   }
 
@@ -1070,8 +1071,12 @@ class SteuertagePanel extends HTMLElement {
           (type === "needs_review" || type === "tracking");
       })
       .sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+    const openReviewTypes = new Set(openReviewItems.map((event) => this._type(event)));
+    const openReviewTitle = openReviewTypes.size > 1
+      ? "Erkennung und Prüftage"
+      : openReviewTypes.has("tracking") ? "Laufende Erkennung" : "Offene Prüftage";
     const openReviewMarkup = openReviewItems.length
-      ? "<section class='open-review-card'><div class='open-review-heading'><div><span class='eyebrow'>DIESER MONAT</span><strong>Offene Prüftage</strong></div><span class='open-review-count'>" + openReviewItems.length + "</span></div><div class='open-review-days'>" +
+      ? "<section class='open-review-card'><div class='open-review-heading'><div><span class='eyebrow'>DIESER MONAT</span><strong>" + openReviewTitle + "</strong></div><span class='open-review-count'>" + openReviewItems.length + "</span></div><div class='open-review-days'>" +
         openReviewItems.slice(0, 8).map((event) => {
           const date = (event.start || "").slice(0, 10);
           const type = this._type(event);
