@@ -1164,29 +1164,28 @@ class SteuertagePanel extends HTMLElement {
       (this._multiSelectMode ? "Mehrfachauswahl beenden" : "Mehrfachauswahl") + "</button>" +
       "<button class='clear-selection' data-action='clear-selection'" +
       (selectedDateCount < 2 ? " hidden" : "") + ">Auswahl aufheben</button></div>";
-    const calendarHeaderMarkup = "<div class='calendar-overview" + (selectionFilterVisible ? " has-range-filter" : "") + "'>" +
-      "<div class='calendar-head'><h2>" + title + "</h2><div class='calendar-navigation'>" +
+    const calendarHeaderMarkup = "<div class='calendar-overview'><div class='calendar-head'><h2>" + title + "</h2><div class='calendar-navigation'>" +
       "<button class='today-nav' data-action='today' aria-label='Zum heutigen Datum springen'>Heute</button>" +
       "<div class='month-nav-group' role='group' aria-label='Monat wechseln'>" +
       "<button class='month-nav' data-action='prev' aria-label='Vorheriger Monat'>‹</button>" +
-      "<button class='month-nav' data-action='next' aria-label='Nächster Monat'>›</button></div></div>" +
-      "<div class='calendar-selection-toolbar'>" + selectionControlsMarkup + historyButtonsMarkup + "</div></div>" +
+      "<button class='month-nav' data-action='next' aria-label='Nächster Monat'>›</button></div></div></div>" +
       monthStatsMarkup + "</div>";
+    const selectionToolbarMarkup = "<div class='calendar-selection-toolbar'>" +
+      selectionControlsMarkup + historyButtonsMarkup + "</div>";
     const content = tab === "calendar"
-      ? (this._calendarEntity() ? "<ha-card>" + calendarTabs + calendarHeaderMarkup + rangeFilterMarkup +
+      ? (this._calendarEntity() ? "<ha-card>" + calendarTabs + calendarHeaderMarkup + selectionToolbarMarkup + rangeFilterMarkup +
         openReviewMarkup + "<div class='grid'>" + headers + cells + "</div>" +
         "<div class='calendar-legend'><div class='legend-status'><strong>Legende</strong><span><i class='legend-dot office-dot'></i>Arbeitsstätte</span><span><i class='legend-dot home-dot'></i>Homeoffice</span><span><i class='legend-dot vacation-dot'></i>Urlaub</span><span><i class='legend-dot sick-dot'></i>Krankheit</span><span><i class='legend-dot no-work-dot'></i>Kein Arbeitstag</span><span class='legend-divider' aria-hidden='true'></span><span class='legend-pulse'><i class='legend-dot tracking-dot'></i>Erkennung läuft</span><span><i class='mixed-legend-mark'>M</i>Mischtag</span><span><i class='manual-legend-mark' aria-hidden='true'>✦</i>Manuell geändert</span></div></div>" + selectedPanelMarkup + "<p class='muted calendar-help'><span class='calendar-help-desktop'>Ziehe mit der Maus über mehrere Tage. Umschalt-Klick wählt den Bereich vom Ankertag bis zum Zieltag einschließlich. Im Mehrfachmodus fügt Umschalt-Klick den Bereich zur Auswahl hinzu. Mit ⌘ (Mac) oder Strg kannst du einzelne Tage hinzufügen oder abwählen.</span><span class='calendar-help-mobile'>Aktiviere die Mehrfachauswahl und tippe einzelne Tage an, um sie hinzuzufügen oder abzuwählen.</span> Mit „Auswahl aufheben“ löschst du die Markierung; „Mehrfachauswahl beenden“ beendet den Modus und hebt die Markierung ebenfalls auf.</p></ha-card>" : calendars.length > 1 ? "<ha-card>" + calendarTabs + "<p>Bitte wähle eine Person aus, um den Kalender zu öffnen.</p></ha-card>" : "<ha-card><p>Es ist noch keine Person für Steuertage eingerichtet.</p></ha-card>")
       : tab === "config" ? this._configMarkup(calendars) : this._exportMarkup(calendars);
     const calendarStyles = `
       .calendar-head > h2, .calendar-head > .calendar-navigation { grid-row: 1; }
       .calendar-selection-toolbar {
-        grid-column: 1 / -1;
-        grid-row: 2;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
         min-width: 0;
+        margin: 0 0 12px;
       }
       .calendar-history-controls { display: flex; flex: none; gap: 4px; }
       .history-button {
@@ -1208,7 +1207,6 @@ class SteuertagePanel extends HTMLElement {
       }
       .history-button:disabled { opacity: .45; cursor: not-allowed; }
       .history-symbol { font-size: 16px; line-height: 1; }
-      .calendar-overview.has-range-filter > .calendar-month-stats { display: none; }
       .calendar-help-mobile { display: none; }
       .day { touch-action: manipulation; }
       .day.today.type-tracking::after {
@@ -1230,7 +1228,6 @@ class SteuertagePanel extends HTMLElement {
       @media (max-width: 650px) {
         .calendar-head {
           grid-template-columns: minmax(0, 1fr) auto;
-          grid-template-rows: auto auto;
           gap: 8px 6px;
           margin-bottom: 12px;
         }
@@ -1294,9 +1291,7 @@ class SteuertagePanel extends HTMLElement {
           margin-bottom: 12px;
         }
         .calendar-overview > .calendar-head { display: contents; }
-        .calendar-selection-toolbar { grid-row: 3; }
-        .calendar-overview > .calendar-month-stats,
-        .calendar-overview.has-range-filter > .calendar-month-stats {
+        .calendar-overview > .calendar-month-stats {
           grid-column: 1 / -1;
           grid-row: 2;
           display: flex;
