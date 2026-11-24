@@ -1,0 +1,133 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Steuertage",
+        "description": "Set up everything in this dialog. The work location is where you travel for work. The threshold is the minimum time spent in the work zone or, when enabled, the home zone before a day is counted automatically (default: 2 hours). Homeoffice and work calendar are optional; their extra selectors are also optional unless the corresponding feature is enabled.",
+        "data": {
+          "person_entity": "Person",
+          "office_zone": "Work location (zone)",
+          "threshold_hours": "Minimum time before a day counts (hours; default 2)",
+          "homeoffice_enabled": "Use Homeoffice detection",
+          "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
+          "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)",
+          "work_calendar_enabled": "Use a work calendar",
+          "work_calendar": "Work calendar (optional; required when enabled)"
+        }
+      },
+      "features": {
+        "title": "Optional features",
+        "description": "Choose a feature to set it up, or return to edit the required details. Afterwards, you can configure another feature or finish setup.",
+        "menu_options": {
+          "homeoffice": "Set up Homeoffice detection",
+          "work_calendar": "Set up work calendar",
+          "finish": "Finish without more features",
+          "disable_homeoffice": "Remove Homeoffice detection",
+          "disable_work_calendar": "Remove work calendar",
+          "basics": "Back to required details"
+        }
+      },
+      "homeoffice": {
+        "title": "Homeoffice detection",
+        "description": "Choose the home zone and device used to detect Homeoffice.",
+        "data": {
+          "home_zone": "Home zone for Homeoffice",
+          "homeoffice_device": "Device for Homeoffice detection",
+          "work_signal": "Previous Homeoffice sensor (legacy setup)"
+        }
+      },
+      "work_calendar": {
+        "title": "Work calendar",
+        "description": "Choose a calendar integrated with Home Assistant. Timed and all-day entries are supported.",
+        "data": {
+          "work_calendar": "Work calendar"
+        }
+      },
+      "finish": {
+        "title": "Finish setup"
+      },
+      "basics": {
+        "title": "Required setup details",
+        "description": "Update the person, work location or threshold, then continue with the optional features.",
+        "data": {
+          "person_entity": "Person",
+          "office_zone": "Work location (zone)",
+          "threshold_hours": "Minimum duration per signal (hours; default 2)"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "Steuertage is already set up for this person.",
+      "device_already_configured": "This Homeoffice device is already assigned to another person.",
+      "home_zone_required": "Select a home zone for Homeoffice detection.",
+      "homeoffice_device_required": "Select a device for Homeoffice detection.",
+      "office_zone_required": "Select the work zone (work location).",
+      "work_calendar_required": "Select a work calendar.",
+      "user_already_configured": "This legacy Home Assistant user mapping is already assigned to another person."
+    },
+    "abort": {
+      "already_configured": "Steuertage is already set up for this person."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Steuertage settings",
+        "description": "Adjust all settings in one dialog. The work location is where you travel for work. The threshold is the minimum time spent in the work zone or, when enabled, the home zone before a day is counted automatically (default: 2 hours). Homeoffice and work calendar are optional; their extra selectors are also optional unless the corresponding feature is enabled.",
+        "data": {
+          "office_zone": "Work location (zone)",
+          "threshold_hours": "Minimum time before a day counts (hours; default 2)",
+          "homeoffice_enabled": "Use Homeoffice detection",
+          "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
+          "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)",
+          "work_calendar_enabled": "Use a work calendar",
+          "work_calendar": "Work calendar (optional; required when enabled)"
+        }
+      },
+      "manage": {
+        "title": "Optional features",
+        "description": "Choose a feature to configure or change. Active features can also be disabled here.",
+        "menu_options": {
+          "homeoffice": "Set up or change Homeoffice detection",
+          "work_calendar": "Set up or change work calendar",
+          "disable_homeoffice": "Disable Homeoffice detection",
+          "disable_work_calendar": "Disable work calendar",
+          "finish": "Save changes"
+        }
+      },
+      "homeoffice": {
+        "title": "Homeoffice detection",
+        "description": "Choose the home zone and device used to detect Homeoffice.",
+        "data": {
+          "home_zone": "Home zone for Homeoffice",
+          "homeoffice_device": "Device for Homeoffice detection",
+          "work_signal": "Previous Homeoffice sensor (legacy setup)"
+        }
+      },
+      "work_calendar": {
+        "title": "Work calendar",
+        "description": "Choose the Home Assistant calendar containing your work appointments. Timed and all-day entries are supported.",
+        "data": {
+          "work_calendar": "Work calendar"
+        }
+      },
+      "disable_homeoffice": {
+        "title": "Disable Homeoffice detection"
+      },
+      "disable_work_calendar": {
+        "title": "Disable work calendar"
+      },
+      "finish": {
+        "title": "Save changes"
+      }
+    },
+    "error": {
+      "device_already_configured": "This Homeoffice device is already assigned to another person.",
+      "home_zone_required": "Select a home zone for Homeoffice detection.",
+      "homeoffice_device_required": "Select a device for Homeoffice detection.",
+      "office_zone_required": "Select the work zone (work location).",
+      "work_calendar_required": "Select a work calendar.",
+      "user_already_configured": "This legacy Home Assistant user mapping is already assigned to another person."
+    }
+  }
+}

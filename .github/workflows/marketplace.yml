@@ -1,0 +1,36 @@
+name: Marketplace readiness
+
+on:
+  push:
+    branches:
+      - main
+      - beta
+  pull_request:
+    branches:
+      - main
+      - beta
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hassfest:
+    name: Home Assistant integration validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Validate integration
+        uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS repository validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Validate HACS integration
+        uses: hacs/action@main
+        with:
+          category: integration

@@ -1,0 +1,49 @@
+set_day_override:
+  name: Tagesstatus ändern
+  description: Ändert den Tagesstatus einer Person manuell oder stellt die automatische Erkennung wieder her.
+  fields:
+    person_entity:
+      name: Person
+      description: Die in Steuertage eingerichtete Home-Assistant-Person.
+      required: true
+      selector:
+        entity:
+          domain: person
+    date:
+      name: Datum
+      description: Datum im Format JJJJ-MM-TT.
+      required: true
+      selector:
+        text:
+    day_type:
+      name: Tagesstatus
+      description: Manueller Status oder automatische Erkennung.
+      required: true
+      selector:
+        select:
+          options:
+            - label: Kein Arbeitstag
+              value: no_work
+            - label: Erkennung läuft
+              value: tracking
+            - label: Homeoffice
+              value: home_office
+            - label: Büro
+              value: office
+            - label: Büro und Homeoffice
+              value: office_and_home_office
+            - label: Bitte prüfen
+              value: needs_review
+            - label: Urlaub
+              value: vacation
+            - label: Krankheit
+              value: sick_leave
+            - label: Automatische Erkennung
+              value: automatic
+    reason:
+      name: Änderungsgrund
+      description: Optionaler Text für die Änderungshistorie.
+      required: false
+      selector:
+        text:
+          multiline: true
