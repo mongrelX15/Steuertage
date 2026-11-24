@@ -26,7 +26,7 @@ Solange Steuertage noch nicht im offiziellen HACS-Store gelistet ist, installier
 
 1. Öffne in Home Assistant **HACS → Integrationen** und wähle im Menü **Benutzerdefinierte Repositories**.
 2. Füge `mongrelX15/Steuertage` als Repository vom Typ **Integration** hinzu.
-3. Installiere **Steuertage** über HACS und starte Home Assistant neu.
+3. Installiere **Steuertage** über Marketplace und starte Home Assistant neu.
 4. Öffne **Einstellungen → Geräte & Dienste → Integration hinzufügen**, suche nach **Steuertage** und folge dem Einrichtungsdialog.
 5. Öffne anschließend **Steuertage** über die Seitenleiste.
 
