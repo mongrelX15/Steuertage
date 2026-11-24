@@ -71,10 +71,6 @@ Beim Wiederherstellen gibt es zwei Möglichkeiten:
 
 Eine Wiederherstellung betrifft nur Personen, die aktuell in Steuertage eingerichtet sind. Bewahre zusätzlich ein aktuelles Home-Assistant-Backup auf.
 
-## Umstieg von HA Work-Log
-
-Steuertage verwendet die Integrations-Domain `steuertage` und ist kein direktes Upgrade der bisherigen `ha_worklog`-Integration. Sichere benötigte Daten, entferne HA Work-Log und richte Steuertage neu ein. Alte Konfigurationen und lokale Verläufe werden nicht automatisch übernommen.
-
 ## Hilfe und Rückmeldungen
 
 Fehler, Fragen und Vorschläge kannst du über [GitHub Issues](https://github.com/mongrelX15/Steuertage/issues) melden. Bitte füge keine Zugangsdaten, privaten Adressen oder personenbezogenen Kalenderdaten bei.
