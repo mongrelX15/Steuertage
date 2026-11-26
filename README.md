@@ -22,14 +22,14 @@
 
 ## Installation
 
-Steuertage ist im offiziellen HACS-Katalog verfügbar.
+Steuertage ist im offiziellen Marketplace (ehemals HACS) verfügbar.
 
-1. Öffne **HACS** in Home Assistant und suche nach **Steuertage**.
+1. Öffne den **Marketplace** in Home Assistant und suche nach **Steuertage**.
 2. Lade die Integration herunter und starte Home Assistant neu.
 3. Öffne **Einstellungen → Geräte & Dienste → Integration hinzufügen**, suche nach **Steuertage** und folge dem Einrichtungsdialog.
 4. Öffne anschließend **Steuertage** über die Seitenleiste.
 
-Falls Steuertage nicht in der HACS-Suche erscheint, kannst du alternativ `mongrelX15/Steuertage` über **Benutzerdefinierte Repositories** als Repository vom Typ **Integration** hinzufügen.
+Falls Steuertage nicht in der Marketplace-Suche erscheint, kannst du alternativ `mongrelX15/Steuertage` über **Benutzerdefinierte Repositories** als Repository vom Typ **Integration** hinzufügen.
 
 Die stabile Version findest du unter [GitHub Releases](https://github.com/mongrelX15/Steuertage/releases/latest). Vorabversionen stehen auf der [Übersicht aller Releases](https://github.com/mongrelX15/Steuertage/releases). Für eine manuelle Installation kopiere `custom_components/steuertage` nach `<config>/custom_components/steuertage` und starte Home Assistant neu.
 
