@@ -12,7 +12,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import (
+    CONF_HOLIDAY_COUNTRY,
+    CONF_HOLIDAY_SUBDIVISION,
+    CONF_SHOW_HOLIDAYS,
+    DOMAIN,
+)
 from .coordinator import WorklogCoordinator
 
 DAY_LABELS = {
@@ -22,6 +27,7 @@ DAY_LABELS = {
     "office": "Arbeitsstätte",
     "office_and_home_office": "Arbeitsstätte + Homeoffice",
     "needs_review": "Bitte prüfen",
+    "business_trip": "Dienstreise",
     "vacation": "Urlaub",
     "sick_leave": "Krankheit",
 }
@@ -44,6 +50,13 @@ class WorklogCalendar(CoordinatorEntity[WorklogCoordinator], CalendarEntity):
 
     def __init__(self, coordinator: WorklogCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
+        settings = {**entry.data, **entry.options}
+        self._holiday_country = (
+            settings.get(CONF_HOLIDAY_COUNTRY) if settings.get(CONF_SHOW_HOLIDAYS) else None
+        )
+        self._holiday_subdivision = (
+            settings.get(CONF_HOLIDAY_SUBDIVISION) if self._holiday_country else None
+        )
         self._attr_unique_id = f"{entry.entry_id}_work_calendar"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
@@ -71,6 +84,8 @@ class WorklogCalendar(CoordinatorEntity[WorklogCoordinator], CalendarEntity):
             "worklog_threshold_minutes": self.coordinator.threshold_minutes,
             "worklog_homeoffice_enabled": self.coordinator.homeoffice_enabled,
             "worklog_work_calendar_entity": self.coordinator.work_calendar_entity,
+            "worklog_holiday_country": self._holiday_country,
+            "worklog_holiday_subdivision": self._holiday_subdivision,
         }
 
     @property
@@ -119,7 +134,7 @@ class WorklogCalendar(CoordinatorEntity[WorklogCoordinator], CalendarEntity):
         summary = DAY_LABELS.get(day_type, DAY_LABELS["needs_review"])
         automatic_summary = DAY_LABELS.get(automatic, DAY_LABELS["needs_review"])
         description = f"Automatische Tageserkennung: {automatic_summary}."
-        if mixed_day:
+        if mixed_day and day_type != "business_trip":
             description += "\nSTEUERTAGE_MIXED:true"
             description += f"\nSTEUERTAGE_PRIMARY:{day_type}"
         if manual_override:

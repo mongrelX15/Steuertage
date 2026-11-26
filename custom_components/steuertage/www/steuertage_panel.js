@@ -13,6 +13,9 @@ class SteuertagePanel extends HTMLElement {
     this._hasReceivedHass = false;
     this._haThemeVariables = new Set();
     this._events = [];
+    this._holidayRequestKey = "";
+    this._holidayRegionKey = "";
+    this._holidayDates = {};
     this._loadedMonth = "";
     this._busy = false;
     this._message = "";
@@ -57,6 +60,8 @@ class SteuertagePanel extends HTMLElement {
       item.attributes.worklog_office_zone_entity,
       item.attributes.worklog_threshold_hours,
       item.attributes.worklog_work_calendar_entity,
+      item.attributes.worklog_holiday_country,
+      item.attributes.worklog_holiday_subdivision,
     ].join(":")).join("|");
     const initial = !this._hasReceivedHass;
     const listChanged = signature !== this._calendarSignature;
@@ -206,7 +211,39 @@ class SteuertagePanel extends HTMLElement {
       calendar.entity_id;
   }
 
+  _holidayRegion() {
+    const attrs = this._calendarEntity()?.attributes;
+    const country = attrs?.worklog_holiday_country;
+    const subdivision = attrs?.worklog_holiday_subdivision || "";
+    return country ? { country, subdivision, key: country + ":" + subdivision } : null;
+  }
+
+  async _loadHolidays() {
+    const region = this._holidayRegion();
+    const connection = this._hass?.connection;
+    if (!region || !connection) {
+      this._holidayRequestKey = "";
+      return;
+    }
+    const year = this._month.getFullYear();
+    const key = region.key + ":" + year;
+    if (key === this._holidayRequestKey) return;
+    this._holidayRequestKey = key;
+    try {
+      const dates = await connection.sendMessagePromise({
+        type: "steuertage/holidays", country: region.country, subdivision: region.subdivision, year,
+      });
+      if (this._holidayRequestKey !== key) return;
+      this._holidayRegionKey = region.key;
+      this._holidayDates = dates;
+      if (this._tab === "calendar") this._render({ preserveEditorPosition: true });
+    } catch {
+      if (this._holidayRequestKey === key) this._holidayRequestKey = "";
+    }
+  }
+
   async _loadEvents({ refresh = false } = {}) {
+    this._loadHolidays();
     const entityId = this._calendarEntity()?.entity_id;
     const monthKey = entityId + ":" + this._isoDate(this._month);
     const sameMonth = this._loadedMonth === monthKey;
@@ -268,6 +305,7 @@ class SteuertagePanel extends HTMLElement {
     }
     if (summary.includes("homeoffice")) return "home_office";
     if (summary.includes("bürotag") || summary.includes("arbeitsstätte") || summary.includes("arbeit vor ort")) return "office";
+    if (summary.includes("dienstreise")) return "business_trip";
     if (summary.includes("urlaub")) return "vacation";
     if (summary.includes("krankheit")) return "sick_leave";
     if (summary.includes("prüfen")) return "needs_review";
@@ -297,6 +335,7 @@ class SteuertagePanel extends HTMLElement {
       office: "Arbeitsstätte",
       office_and_home_office: "Arbeitsstätte + Homeoffice",
       needs_review: "Bitte prüfen",
+      business_trip: "Dienstreise",
       vacation: "Urlaub",
       sick_leave: "Krankheit",
     })[type] || "Noch kein Eintrag";
@@ -335,7 +374,7 @@ class SteuertagePanel extends HTMLElement {
     const latest = this._changeHistory(event).at(-1);
     const knownTypes = new Set([
       "no_work", "tracking", "home_office", "office", "office_and_home_office",
-      "needs_review", "vacation", "sick_leave",
+      "needs_review", "business_trip", "vacation", "sick_leave",
     ]);
     if (knownTypes.has(latest?.new_value)) return latest.new_value;
     if (/Manuell geändert zu: Arbeitsstätte \+ Homeoffice/i.test(description)) {
@@ -388,12 +427,13 @@ class SteuertagePanel extends HTMLElement {
       if (this._isMixedEvent(event)) days.get(date).add("mixed_day");
     });
     const entries = [...days.values()];
-    const workTypes = new Set(["office", "home_office"]);
+    const workTypes = new Set(["office", "home_office", "business_trip"]);
     return {
       workdays: entries.filter((types) => [...types].some((type) => workTypes.has(type))).length,
       office: entries.filter((types) => types.has("office")).length,
       homeOffice: entries.filter((types) => types.has("home_office")).length,
       mixed: entries.filter((types) => types.has("mixed_day")).length,
+      businessTrips: entries.filter((types) => types.has("business_trip")).length,
       vacation: entries.filter((types) => types.has("vacation")).length,
       sick: entries.filter((types) => types.has("sick_leave")).length,
     };
@@ -494,8 +534,12 @@ class SteuertagePanel extends HTMLElement {
     }
     const clearButton = this.shadowRoot.querySelector("[data-action='clear-selection']");
     if (clearButton) clearButton.hidden = dates.size < 2;
-    const hint = this.shadowRoot.querySelector(".selection-hint");
-    if (hint) hint.textContent = dates.size === 1 ? "1 Tag ausgewählt" : dates.size + " Tage ausgewählt";
+    const count = this.shadowRoot.querySelector(".selection-count");
+    if (count) count.textContent = dates.size === 1 ? "1 Tag" : dates.size + " Tage";
+    const filterCount = this.shadowRoot.querySelector(".range-filter-count");
+    if (filterCount) filterCount.textContent = dates.size === 0
+      ? "Mehrfachauswahl aktiv"
+      : dates.size + (dates.size === 1 ? " Tag ausgewählt" : " Tage ausgewählt");
   }
 
 
@@ -687,6 +731,9 @@ class SteuertagePanel extends HTMLElement {
           })()]] : []),
         ["Arbeitsstätte (Zone)", a.worklog_office_zone_entity || "Nicht eingerichtet"],
         ["Arbeitskalender", workCalendar],
+        ["Gesetzliche Feiertage", a.worklog_holiday_country
+          ? [a.worklog_holiday_country, a.worklog_holiday_subdivision].filter(Boolean).join(" · ")
+          : "Ausgeblendet"],
         ["Schwellwert", thresholdLabel + " Stunden"]];
       return "<section class='config-card'><div class='config-title'><h3>" + this._escape(this._calendarLabel(calendar)) +
         "</h3><a class='settings-link' href='/config/integrations/integration/steuertage#config_entry=" + encodeURIComponent(a.worklog_entry_id || "") +
@@ -751,13 +798,13 @@ class SteuertagePanel extends HTMLElement {
 
   _countsForRows(rows) {
     const homeofficeEnabled = this._homeOfficeEnabled();
-    const counts = { office: 0, home_office: 0, mixed: 0, sick_leave: 0, vacation: 0, needs_review: 0, tracking: 0 };
+    const counts = { office: 0, home_office: 0, mixed: 0, business_trip: 0, sick_leave: 0, vacation: 0, needs_review: 0, tracking: 0 };
     rows.forEach((row) => {
       if (row.type === "home_office" && !homeofficeEnabled) return;
       if (row.type in counts && row.type !== "mixed") counts[row.type]++;
       if (homeofficeEnabled && row.mixed) counts.mixed++;
     });
-    counts.workdays = counts.office + counts.home_office;
+    counts.workdays = counts.office + counts.home_office + counts.business_trip;
     counts.manual = rows.filter((row) => row.manual).length;
     return counts;
   }
@@ -788,10 +835,10 @@ class SteuertagePanel extends HTMLElement {
     const monthly = rows === null ? [] : this._monthlySummary(rows);
     const monthlyHead = "<th>Monat</th><th>Arbeitsstätte</th>" +
       (homeofficeEnabled ? "<th>Homeoffice</th><th>Mischtage (Info)</th>" : "") +
-      "<th>Krank</th><th>Urlaub</th><th>Arbeitstage gesamt</th>";
+      "<th>Dienstreisen</th><th>Krank</th><th>Urlaub</th><th>Arbeitstage gesamt</th>";
     const monthlyRows = monthly.map((m) => "<tr><td>" + m.month + "</td><td>" + m.office + "</td>" +
       (homeofficeEnabled ? "<td>" + m.home_office + "</td><td>" + m.mixed + "</td>" : "") +
-      "<td>" + m.sick_leave + "</td><td>" + m.vacation + "</td><td>" + m.workdays + "</td></tr>").join("");
+      "<td>" + m.business_trip + "</td><td>" + m.sick_leave + "</td><td>" + m.vacation + "</td><td>" + m.workdays + "</td></tr>").join("");
     const monthlyTable = monthly.length ? "<div class='table-wrap'><table><thead><tr>" + monthlyHead +
       "</tr></thead><tbody>" + monthlyRows + "</tbody></table></div>" :
       "<p>Für den gewählten Zeitraum gibt es keine gespeicherten Tage.</p>";
@@ -810,7 +857,7 @@ class SteuertagePanel extends HTMLElement {
     }).sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")));
     const changeLabel = (value) => value === "automatic" ? "Automatik" : this._label(value);
     const currentYear = new Date().getFullYear();
-    return "<ha-card><header class='view-header'><div><span class='eyebrow'>AUSWERTUNG &amp; DATENSICHERUNG</span><h2>Daten &amp; Export</h2><p>Steuerlich relevante Tage auswerten, exportieren und Verläufe sichern oder wiederherstellen.</p></div><span class='header-badge'>CSV · TXT · HTML</span></header>" +
+    return "<ha-card><header class='view-header'><div><span class='eyebrow'>AUSWERTUNG &amp; DATENSICHERUNG</span><h2>Daten &amp; Export</h2><p>Steuerlich relevante Tage auswerten, exportieren und Verläufe sichern oder wiederherstellen.</p></div><span class='header-badge'>CSV · TXT · HTML · PDF</span></header>" +
       "<section class='info-card export-check " + (openItems.length ? "has-issues" : "all-clear") + "'><h3>Vor dem Export prüfen</h3>" + checklist + (rows === null ? "" : "<p class='muted'>" + counts.manual + " manuell geänderte Tage im Zeitraum.</p>") + "</section>" +
       "<section class='export-period'><div class='section-heading'><div><span class='eyebrow'>ZEITRAUM</span><h3>Auswertung eingrenzen</h3></div>" + person + "</div><div class='export-controls'>" +
       "<div class='preset-row'>" +
@@ -820,11 +867,12 @@ class SteuertagePanel extends HTMLElement {
       "<label>Bis <input data-export-to type='date' value='" + this._exportTo + "'></label>" +
       "<button class='export-button' data-download='csv' " + disabled + ">CSV herunterladen</button>" +
       "<button class='export-button' data-download='txt' " + disabled + ">TXT herunterladen</button>" +
-      "<button class='export-button' data-download='html' " + disabled + ">HTML herunterladen</button></div></section>" +
+      "<button class='export-button' data-download='html' " + disabled + ">HTML herunterladen</button>" +
+      "<button class='export-button' data-download='pdf' " + disabled + ">PDF herunterladen</button></div></section>" +
       "<p class='muted'>" + (homeofficeEnabled ? "Mischtage sind in ihrer Hauptkategorie enthalten und werden als Zusatzinformation ausgewiesen. " : "") + "Nur durch diese App erfasste Tage können in der Auswertung berücksichtigt werden.</p>" +
       (rows === null ? table : "<div class='stats export-stats'>" + stat("Tage mit Arbeitsstätte",counts.office) +
       (homeofficeEnabled ? stat("Homeoffice-Tage",counts.home_office) + stat("Davon Mischtage (Info)",counts.mixed) : "") +
-      stat("Krankheitstage",counts.sick_leave) + stat("Urlaubstage",counts.vacation) +
+      stat("Dienstreisen",counts.business_trip) + stat("Krankheitstage",counts.sick_leave) + stat("Urlaubstage",counts.vacation) +
       stat("Arbeitstage gesamt",counts.workdays) + stat("Bitte prüfen",counts.needs_review) + stat("Erkennung läuft",counts.tracking) + "</div>" +
       "<details class='data-disclosure' data-disclosure-id='monthly' " + (this._openDisclosures.has("monthly") ? "open" : "") + "><summary><span>Monatsübersicht</span><small>" + monthly.length + (monthly.length === 1 ? " Monat" : " Monate") + "</small></summary><div class='disclosure-content'>" + monthlyTable + "</div></details>" +
       "<details class='data-disclosure' data-disclosure-id='daily' " + (this._openDisclosures.has("daily") ? "open" : "") + "><summary><span>Tagesliste</span><small>" + rows.length + (rows.length === 1 ? " Tag" : " Tage") + "</small></summary><div class='disclosure-content'>" + table + "</div></details>" +
@@ -1047,49 +1095,301 @@ class SteuertagePanel extends HTMLElement {
     this._render();
   }
 
-  _downloadExport(format) {
-    const person = this._calendarLabel(this._calendarEntity() || {attributes:{},entity_id:""});
-    const homeofficeEnabled = this._homeOfficeEnabled();
+  _exportReport() {
     const rows = this._exportRows();
-    const c = this._countsForRows(rows);
-    const headers = ["Datum","Tagestyp","Manuell geändert","Hinweis"];
-    const values = rows.map((r) => [this._formatDate(r.date),r.label,r.manual?"Ja":"Nein",r.mixed?"Mischtag (im Haupttyp enthalten)":r.type==="needs_review"?"Bitte im Kalender prüfen":r.type==="tracking"?"Erkennung noch nicht abgeschlossen":""]);
-    const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (x) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[x]));
-    const period = this._formatDate(this._exportFrom) + " bis " + this._formatDate(this._exportTo);
-    const generatedAt = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date());
-    const summary = [["Tage mit Arbeitsstätte",c.office]];
-    if (homeofficeEnabled) summary.push(["Homeoffice-Tage",c.home_office],["Davon Mischtage (Info; in Haupttyp enthalten)",c.mixed]);
-    summary.push(["Krankheitstage",c.sick_leave],["Urlaubstage",c.vacation],["Arbeitstage gesamt",c.workdays],["Bitte prüfen",c.needs_review],["Erkennung läuft",c.tracking]);
-    const monthHead = ["Monat","Arbeitsstätte",...(homeofficeEnabled ? ["Homeoffice","Mischtage (Info)"] : []),"Krank","Urlaub","Arbeitstage gesamt"];
-    const monthValues = (m) => [this._formatDate(m.month + "-01", { month: "long", year: "numeric" }),m.office,...(homeofficeEnabled ? [m.home_office,m.mixed] : []),m.sick_leave,m.vacation,m.workdays];
-    const disclaimer = "Steuertage unterstützt lediglich die automatische Erfassung relevanter Daten auf Grundlage der in Home Assistant vorhandenen Erkennung. Für Richtigkeit und Vollständigkeit Ihrer Steuererklärung tragen Sie die volle Verantwortung. Alle Angaben ohne Gewähr.";
-    const notice = "Nur durch diese App erfasste Tage können in der Auswertung berücksichtigt werden.";
-    let content, mime = "text/plain;charset=utf-8";
-    if (format === "csv") {
-      content = "\ufeff" + [["Steuertage",period,person,"Erstellt am "+generatedAt],["Hinweis",notice],["Verantwortung",disclaimer],[],...summary,[],headers,...values].map((line) => line.map((v) => '"' + String(v ?? "").replace(/"/g,'""') + '"').join(";")).join("\r\n");
-      mime = "text/csv;charset=utf-8";
-    } else if (format === "html") {
-      const monthly = this._monthlySummary(rows);
-      content = "<!doctype html><html lang='de'><head><meta charset='utf-8'><title>Steuertage " + period + "</title><style>body{font:16px system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 1rem;color:#222}table{border-collapse:collapse;width:100%}th,td{text-align:left;border-bottom:1px solid #ddd;padding:.55rem}.notice{background:#fff4d5}.report-meta{color:#555;font-size:14px;margin:-.5rem 0 1.5rem}@media print{body{max-width:none;margin:0;padding:0;color:#000;font-size:11pt}h1{font-size:20pt}h2{break-after:avoid}table{font-size:9pt}thead{display:table-header-group}tr{break-inside:avoid}.notice{background:#f2f2f2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.report-footer{border-top:1px solid #999;margin-top:2rem;padding-top:1rem;font-size:9pt}}</style></head><body><h1>Steuertage · " + esc(person) + "</h1><p class='report-meta'>Auswertungszeitraum: " + period + " · Erstellt am " + esc(generatedAt) + "</p><h2>Übersicht</h2><ul>" +
-        summary.map((x) => "<li>" + esc(x[0]) + ": " + x[1] + "</li>").join("") + "</ul><h2>Monatsübersicht</h2><table><thead><tr>" +
-        monthHead.map((x) => "<th>" + esc(x) + "</th>").join("") + "</tr></thead><tbody>" +
-        monthly.map((m) => "<tr>" + monthValues(m).map((v) => "<td>"+esc(v)+"</td>").join("") + "</tr>").join("") +
-        "</tbody></table><h2>Prüfliste</h2>" + rows.filter((r) => r.type === "needs_review" || r.type === "tracking").map((r) => "<p>"+esc(this._formatDate(r.date))+" · "+esc(r.label)+"</p>").join("") +
-        "<h2>Tagesliste</h2><table><thead><tr>" + headers.map((x) => "<th>" + esc(x) + "</th>").join("") + "</tr></thead><tbody>" + rows.map((r) => "<tr class='" +
-        (r.type === "needs_review" || r.type === "tracking" ? "notice" : "") + "'><td>" + esc(this._formatDate(r.date)) + "</td><td>" + esc(r.label) +
-        "</td><td>" + (r.manual?"Ja":"Nein") + "</td><td>" + esc(r.mixed?"Mischtag (im Haupttyp enthalten)":r.type === "needs_review"?"Bitte im Kalender prüfen":r.type === "tracking"?"Erkennung noch nicht abgeschlossen":"") +
-        "</td></tr>").join("") + "</tbody></table><footer class='report-footer'><p>"+notice+"</p><p>"+disclaimer+"</p></footer></body></html>";
-      mime = "text/html;charset=utf-8";
-    } else {
-      content = "Steuertage " + period + " – " + person + "\nErstellt am: " + generatedAt + "\n\n" + summary.map((x) => x[0] + ": " + x[1]).join("\n") +
-        "\n\nMonatsübersicht\n" + monthHead.join(" | ") + "\n" + this._monthlySummary(rows).map((m) => monthValues(m).join(" | ")).join("\n") +
-        "\n\nPrüfliste\n" + rows.filter((r) => r.type === "needs_review" || r.type === "tracking").map((r) => this._formatDate(r.date) + " · " + r.label).join("\n") +
-        "\n\n" + headers.join(" | ") + "\n" + values.map((r) => r.join(" | ")).join("\n") +
-        "\n\n" + notice + "\n\n" + disclaimer;
+    const counts = this._countsForRows(rows);
+    const homeOffice = this._homeOfficeEnabled();
+    const date = (value) => this._formatDate(value, { day: "2-digit", month: "2-digit", year: "numeric" });
+    const measures = [
+      ["Arbeitsstätte", "office"],
+      ...(homeOffice ? [["Homeoffice", "home_office"]] : []),
+      ["Dienstreisen", "business_trip"],
+      ["Krankheit", "sick_leave"],
+      ["Urlaub", "vacation"],
+    ];
+    return {
+      person: this._calendarLabel(this._calendarEntity() || { attributes: {}, entity_id: "" }),
+      period: date(this._exportFrom) + " bis " + date(this._exportTo),
+      generated: new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date()),
+      credit: "Steuertage · Version " + (this._panel?.config?.version || "–") + " · Entwickelt von mongrelX15",
+      total: counts.workdays,
+      measures: measures.map(([label, key]) => [label, counts[key]]),
+      details: [
+        ...(homeOffice ? [["Mischtage (im Haupttyp enthalten)", counts.mixed]] : []),
+        ["Bitte prüfen", counts.needs_review],
+        ["Erkennung läuft", counts.tracking],
+      ],
+      months: {
+        headers: ["Monat", ...measures.map(([label]) => label), ...(homeOffice ? ["Mischtage"] : []), "Arbeitstage"],
+        values: this._monthlySummary(rows).map((month) => [
+          month.month, ...measures.map(([, key]) => month[key]), ...(homeOffice ? [month.mixed] : []), month.workdays,
+        ]),
+      },
+      days: {
+        headers: ["Datum", "Tagestyp", "Manuell geändert", "Hinweis"],
+        values: rows.map((row) => [
+          date(row.date), row.label, row.manual ? "Ja" : "Nein",
+          [
+            row.mixed ? "Mischtag" : "",
+            row.type === "needs_review" ? "Bitte im Kalender prüfen" : "",
+            row.type === "tracking" ? "Erkennung noch nicht abgeschlossen" : "",
+          ].filter(Boolean).join(" · "),
+        ]),
+      },
+      notice: "Nur durch Steuertage erfasste Tage können in der Auswertung berücksichtigt werden. Steuertage unterstützt die automatische Erfassung auf Grundlage der in Home Assistant vorhandenen Erkennung. Für Richtigkeit und Vollständigkeit deiner Steuererklärung trägst du die Verantwortung. Alle Angaben ohne Gewähr.",
+    };
+  }
+
+  async _exportLogo() {
+    try {
+      const image = this.shadowRoot.querySelector(".app-mark img");
+      if (!image) return null;
+      await image.decode();
+      const size = 96;
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = size;
+      const context = canvas.getContext("2d");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, size, size);
+      const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+      const width = image.naturalWidth * scale;
+      const height = image.naturalHeight * scale;
+      context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+      return { url: canvas.toDataURL("image/jpeg", .88), size };
+    } catch {
+      return null;
     }
-    const url = URL.createObjectURL(new Blob([content], {type:mime}));
-    const link = document.createElement("a"); link.href=url; link.download="steuertage-"+this._exportFrom+"-"+this._exportTo+"."+format; link.click();
-    setTimeout(() => URL.revokeObjectURL(url),1000);
+  }
+
+  _exportHtml(report, logo) {
+    const esc = (value) => this._escape(value);
+    const table = ({ headers, values }) => values.length
+      ? "<div class='table-wrap'><table><thead><tr>" +
+        headers.map((value) => "<th scope='col'>" + esc(value) + "</th>").join("") +
+        "</tr></thead><tbody>" + values.map((row) => "<tr>" +
+          row.map((value) => "<td>" + esc(value) + "</td>").join("") + "</tr>").join("") +
+        "</tbody></table></div>"
+      : "<p>Keine gespeicherten Tage in diesem Zeitraum.</p>";
+    const stats = report.measures.map(([label, value]) =>
+      "<div><dt>" + esc(label) + "</dt><dd>" + value + "</dd></div>").join("");
+    return "<!doctype html><html lang='de'><head><meta charset='utf-8'>" +
+      "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Steuertage · Auswertung</title><style>" +
+      "*{box-sizing:border-box}body{font:15px/1.5 system-ui,sans-serif;margin:0;background:#f5f4f0;color:#242220}" +
+      "main{max-width:960px;margin:auto;padding:clamp(16px,5vw,48px)}header{display:flex;align-items:center;gap:14px}" +
+      "header img{width:48px;height:48px;border-radius:10px}h1,h2,p{margin:0}h1{font-size:28px}h2{font-size:18px}" +
+      ".meta,footer,.details{color:#5b544b}.meta{margin:12px 0 24px}.total{background:#fff0ce;border:1px solid #eac77b;border-radius:12px;padding:12px 16px}" +
+      ".total strong{display:block;font-size:32px;line-height:1.15}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;margin:8px 0}" +
+      ".stats div{background:#fff;border:1px solid #e4dfd5;border-radius:9px;padding:8px 10px}.stats dd{margin:0;font-size:22px;font-weight:700}" +
+      "section+section,footer{margin-top:24px}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;margin-top:6px}" +
+      "th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #e4dfd5}thead{background:#efece5}tbody tr:nth-child(even){background:#faf9f6}" +
+      "footer{padding-top:10px;border-top:1px solid #c8c0b4;font-size:12px}footer p+p{margin-top:4px}" +
+      "@media print{@page{margin:14mm}body{background:#fff}main{padding:0}.table-wrap{overflow:visible}thead{display:table-header-group}" +
+      "h2{break-after:avoid}tr,footer,.stats div,.total{break-inside:avoid}}</style></head><body><main><header>" +
+      (logo ? "<img src='" + logo.url + "' alt='' width='48' height='48'>" : "") +
+      "<h1>Steuertage · Auswertung</h1></header><p class='meta'>" + esc(report.person) + "<br>" + esc(report.period) +
+      " · Erstellt am " + esc(report.generated) + "</p><section aria-label='Gesamtübersicht'><div class='total'>Arbeitstage gesamt<strong>" +
+      report.total + "</strong></div><dl class='stats'>" + stats + "</dl><p class='details'>" +
+      report.details.map(([label, value]) => esc(label) + ": " + value).join(" · ") + "</p></section>" +
+      "<section><h2>Monatsübersicht</h2>" + table(report.months) + "</section><section><h2>Tagesprotokoll</h2>" +
+      table(report.days) + "</section><footer><p>" + esc(report.credit) + "</p><p>" + esc(report.notice) +
+      "</p></footer></main></body></html>";
+  }
+
+  _exportPdf(report, logo) {
+    const ascii = (value) => String(value).normalize("NFC").replace(/[^\x20-\xff]/gu, (char) =>
+      ({ "–": "-", "—": "-", "’": "'", "€": "EUR", "…": "..." })[char] ||
+      char.normalize("NFKD").replace(/[^\x20-\xff]/g, "") || "?");
+    const literal = (value) => "(" + ascii(value).replace(/[\\()]/g, (char) => "\\" + char)
+      .replace(/[\x7f-\xff]/g, (char) => "\\" + char.charCodeAt(0).toString(8).padStart(3, "0")) + ")";
+    const context = document.createElement("canvas").getContext("2d");
+    const wrap = (value, width, size, bold = false) => {
+      context.font = (bold ? "bold " : "") + size + "px Arial";
+      const lines = [];
+      let line = "";
+      for (const char of ascii(value).replace(/\s+/g, " ")) {
+        if (line && context.measureText(line + char).width > width) {
+          const split = line.lastIndexOf(" ");
+          lines.push(split < 0 ? line : line.slice(0, split));
+          line = split < 0 ? "" : line.slice(split + 1);
+        }
+        line += char;
+      }
+      return [...lines, line.trim()];
+    };
+
+    const width = 595, height = 842, margin = 42;
+    const bodyWidth = width - 2 * margin;
+    const pages = [];
+    let commands, y;
+    const text = (value, x, at, size = 10, bold = false) => {
+      commands.push("0.13 0.11 0.08 rg BT /" + (bold ? "F2" : "F1") + " " + size +
+        " Tf 1 0 0 1 " + x + " " + at + " Tm " + literal(value) + " Tj ET");
+    };
+    const rect = (x, top, w, h, color) => commands.push(color + " rg " + x + " " + (top - h) + " " + w + " " + h + " re f");
+    const startPage = () => {
+      commands = [];
+      pages.push(commands);
+      y = height - margin;
+      if (pages.length > 1) {
+        text("Steuertage · Auswertung", margin, y, 12, true);
+        y -= 24;
+      }
+    };
+    const footerLines = wrap(report.notice, bodyWidth, 8);
+    const footerTop = 53 + 10 * footerLines.length;
+    startPage();
+    if (logo) commands.push("q 38 0 0 38 " + margin + " " + (y - 32) + " cm /Logo Do Q");
+    text("Steuertage · Auswertung", margin + (logo ? 50 : 0), y - 13, 23, true);
+    y -= 50;
+    for (const line of wrap(report.person, bodyWidth, 12, true)) {
+      if (y < footerTop + 16) startPage();
+      text(line, margin, y, 12, true);
+      y -= 15;
+    }
+    text(report.period + " · Erstellt am " + report.generated, margin, y);
+    y -= 17;
+    if (y < footerTop + 145) startPage();
+    rect(margin, y, bodyWidth, 55, "1 .92 .68");
+    text("Arbeitstage gesamt", margin + 12, y - 18, 11, true);
+    text(report.total, margin + 12, y - 43, 24, true);
+    y -= 63;
+    const gap = 6;
+    const tileWidth = (bodyWidth - gap * (report.measures.length - 1)) / report.measures.length;
+    report.measures.forEach(([label, count], i) => {
+      const x = margin + i * (tileWidth + gap);
+      rect(x, y, tileWidth, 40, ".98 .96 .89");
+      text(label, x + 7, y - 14, 9);
+      text(count, x + 7, y - 32, 16, true);
+    });
+    y -= 55;
+    text(report.details.map(([label, value]) => label + ": " + value).join(" · "), margin, y, 9);
+    y -= 25;
+
+    const table = (title, { headers, values }, widths) => {
+      const rowLines = (cells, bold) => cells.map((value, i) => wrap(value, widths[i] - 12, 9, bold));
+      const rowHeight = (lines) => Math.max(...lines.map((column) => column.length)) * 11 + 8;
+      const drawRow = (lines, h, color, bold = false) => {
+        if (color) rect(margin, y, bodyWidth, h, color);
+        let x = margin;
+        lines.forEach((column, i) => {
+          column.forEach((line, j) => text(line, x + 6, y - 12 - j * 11, 9, bold));
+          x += widths[i];
+        });
+        y -= h;
+      };
+      const heading = rowLines(headers, true);
+      const headingHeight = rowHeight(heading);
+      const section = (continued = false) => {
+        text(title + (continued ? " (Fortsetzung)" : ""), margin, y, 14, true);
+        y -= 9;
+        if (values.length) drawRow(heading, headingHeight, ".97 .93 .81", true);
+      };
+      if (y < footerTop + headingHeight + 52) startPage();
+      section();
+      if (!values.length) {
+        text("Keine gespeicherten Tage in diesem Zeitraum.", margin, y - 13);
+        y -= 22;
+      }
+      values.forEach((cells, i) => {
+        const lines = rowLines(cells, false);
+        const h = rowHeight(lines);
+        if (y - h < footerTop) {
+          startPage();
+          section(true);
+        }
+        drawRow(lines, h, i % 2 === 0 ? ".98 .97 .94" : null);
+      });
+      y -= 24;
+    };
+    table("Monatsübersicht", report.months, report.months.headers.map(() => bodyWidth / report.months.headers.length));
+    table("Tagesprotokoll", report.days, [76, 120, 104, bodyWidth - 300]);
+
+    pages.forEach((page, i) => {
+      commands = page;
+      rect(margin, footerTop - 5, bodyWidth, 1, ".9 .81 .57");
+      text(report.credit, margin, footerTop - 17, 8, true);
+      text((i + 1) + " / " + pages.length, width - margin - 42, footerTop - 17, 8);
+      footerLines.forEach((line, j) => text(line, margin, footerTop - 29 - j * 10, 8));
+    });
+
+    // All PDF strings are ASCII, including the image's ASCIIHex stream and WinAnsi text escapes.
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+    ];
+    const stream = (data, dictionary = "") => "<< /Length " + data.length + " " + dictionary + " >>\nstream\n" + data + "\nendstream";
+    let logoResource = "";
+    if (logo) {
+      const jpeg = atob(logo.url.split(",")[1]);
+      const hex = Array.from(jpeg, (char) => char.charCodeAt(0).toString(16).padStart(2, "0")).join("") + ">";
+      const id = objects.push(stream(hex, "/Type /XObject /Subtype /Image /Width " + logo.size +
+        " /Height " + logo.size + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode]"));
+      logoResource = " /XObject << /Logo " + id + " 0 R >>";
+    }
+    const kids = pages.map((page) => {
+      const dataId = objects.push(stream(page.join("\n")));
+      return objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + width + " " + height +
+        "] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>" + logoResource + " >> /Contents " + dataId + " 0 R >>") + " 0 R";
+    });
+    objects[1] = "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + kids.length + " >>";
+    let pdf = "%PDF-1.4\n";
+    const offsets = objects.map((object, i) => {
+      const offset = pdf.length;
+      pdf += (i + 1) + " 0 obj\n" + object + "\nendobj\n";
+      return offset;
+    });
+    const xref = pdf.length;
+    pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
+    pdf += offsets.map((offset) => String(offset).padStart(10, "0") + " 00000 n \n").join("");
+    return pdf + "trailer\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n";
+  }
+
+  async _downloadExport(format) {
+    const report = this._exportReport();
+    const totals = [["Arbeitstage gesamt", report.total], ...report.measures, ...report.details];
+    const filename = "steuertage-" + this._exportFrom + "-" + this._exportTo + "." + format;
+    let content;
+    let mime = "text/plain;charset=utf-8";
+    if (format === "csv") {
+      const cell = (value) => {
+        const text = String(value);
+        const safe = typeof value === "string" && /^[ \t\r\n]*[=+\-@\t\r\n]/.test(text) ? "'" + text : text;
+        return '"' + safe.replaceAll('"', '""') + '"';
+      };
+      content = "\ufeff" + [
+        ["Steuertage", report.period, report.person, "Erstellt am " + report.generated],
+        [], ["Gesamtübersicht", "Tage"], ...totals,
+        [], ["Tagesprotokoll"], report.days.headers, ...report.days.values,
+        [], [report.credit], ["Hinweis", report.notice],
+      ].map((row) => row.map(cell).join(";")).join("\r\n");
+      mime = "text/csv;charset=utf-8";
+    } else if (format === "txt") {
+      const table = ({ headers, values }) => [headers, ...values].map((row) => row.join(" | ")).join("\n");
+      content = [
+        "Steuertage · Auswertung", report.person, report.period, "Erstellt am " + report.generated,
+        "", "GESAMTÜBERSICHT", ...totals.map(([label, value]) => label + ": " + value),
+        "", "MONATSÜBERSICHT", table(report.months),
+        "", "TAGESPROTOKOLL", table(report.days),
+        "", "────────────────────────────────────────", report.credit, report.notice,
+      ].join("\n");
+    } else {
+      const logo = await this._exportLogo();
+      if (format === "pdf") {
+        content = this._exportPdf(report, logo);
+        mime = "application/pdf";
+      } else {
+        content = this._exportHtml(report, logo);
+        mime = "text/html;charset=utf-8";
+      }
+    }
+    const url = URL.createObjectURL(new Blob([content], { type: mime }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   _scrollPositions() {
@@ -1111,15 +1411,10 @@ class SteuertagePanel extends HTMLElement {
   _updateView(markup) {
     this._viewListeners?.abort();
     this._viewListeners = new AbortController();
-    if (this._tab !== "calendar" || this._renderedTab !== "calendar") {
-      this._view.innerHTML = markup;
-    } else {
-      // Keep the calendar controls connected during data and layout updates.
-      const template = document.createElement("template");
-      template.innerHTML = markup;
-      this._updateViewChildren(this._view, template.content);
-    }
-    this._renderedTab = this._tab;
+    // Keep the shared header and the active controls connected on every tab.
+    const template = document.createElement("template");
+    template.innerHTML = markup;
+    this._updateViewChildren(this._view, template.content);
   }
 
   _updateViewChildren(current, incoming) {
@@ -1127,7 +1422,9 @@ class SteuertagePanel extends HTMLElement {
       if (node.nodeType !== Node.ELEMENT_NODE) return node.nodeType;
       const identity = node.dataset?.action ?? node.dataset?.type ?? node.dataset?.date ??
         node.dataset?.calendar ?? node.dataset?.reviewDate ?? node.dataset?.rangeWeekday ??
-        node.dataset?.rangePreset ?? node.classList[0] ?? "";
+        node.dataset?.rangePreset ?? node.dataset?.disclosureId ?? node.dataset?.tab ??
+        node.dataset?.year ?? node.dataset?.period ?? node.dataset?.download ??
+        (node.localName === "option" ? node.value : node.classList[0]) ?? "";
       return node.tagName + ":" + identity;
     };
     const available = new Map();
@@ -1163,13 +1460,19 @@ class SteuertagePanel extends HTMLElement {
           if (name === "value" && child.localName === "input") child.value = value;
         }
       }
+      const selectedValue = child.localName === "select" ? next.value : null;
       this._updateViewChildren(child, next);
+      if (selectedValue !== null && child.value !== selectedValue) child.value = selectedValue;
     }
   }
 
   _render({ preserveEditorPosition = false } = {}) {
     if (!this._hass) return;
     const scrollPositions = this._scrollPositions();
+    const exportPeriod = this._tab === "export" && scrollPositions.length
+      ? this.shadowRoot.querySelector(".export-period")
+      : null;
+    const exportPeriodRect = exportPeriod?.getBoundingClientRect();
     const editorTop = this._tab === "calendar" && (preserveEditorPosition || this._busy)
       ? this._calendarEditorTop()
       : null;
@@ -1183,6 +1486,7 @@ class SteuertagePanel extends HTMLElement {
       { label: "Arbeitsstätte", value: monthStats.office },
       ...(homeOfficeEnabled ? [{ label: "Homeoffice", value: monthStats.homeOffice }] : []),
       ...(homeOfficeEnabled && monthStats.mixed ? [{ label: "Davon Mischtage", value: monthStats.mixed }] : []),
+      { label: "Dienstreisen", value: monthStats.businessTrips },
       { label: "Urlaub", value: monthStats.vacation },
       { label: "Krankheit", value: monthStats.sick },
     ];
@@ -1219,6 +1523,11 @@ class SteuertagePanel extends HTMLElement {
       : detectedLabel) + (this._isMixedEvent(selectedEvent) ? " · Mischtag" : "");
     const selectedDates = this._selectedDates || new Set(this._selected ? [this._selected] : []);
     const selectedDateCount = selectedDates.size;
+    const holidayRegion = this._holidayRegion();
+    const holidayDates = holidayRegion?.key === this._holidayRegionKey ? this._holidayDates : {};
+    const selectedHoliday = selectedDateCount === 1 && holidayDates[this._selected]
+      ? "<p class='selection-status'>Feiertag · " + this._escape(holidayDates[this._selected]) + "</p>"
+      : "";
     const rangeWeekdays = this._rangeWeekdays();
     const selectionFilterVisible = this._multiSelectMode || selectedDateCount > 1;
     const editHistory = this._editHistoryForCurrentPerson();
@@ -1254,13 +1563,19 @@ class SteuertagePanel extends HTMLElement {
     for (let i = 0; i < 42; i++) {
       const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
       const iso = this._isoDate(d);
+      const holidayTitle = holidayDates[iso] ? "Feiertag: " + this._escape(holidayDates[iso]).replaceAll("'", "&#39;") : "";
       const event = this._eventForDay(iso);
       const type = this._type(event);
       const isWeekend = d.getDay() === 0 || d.getDay() === 6;
       const manuallyChanged = (event?.description || "").includes("Manuell geändert");
       const mixedDay = this._isMixedEvent(event);
-      const cls = ["day", isWeekend ? "weekend" : "", type ? "type-" + type : "", manuallyChanged ? "manual" : "", mixedDay ? "mixed" : "", d.getMonth() !== this._month.getMonth() ? "outside" : "", iso === todayIso ? "today" : "", iso === this._selected ? "selected" : "", selectedDates.has(iso) ? "range-selected" : ""].filter(Boolean).join(" ");
-      cells += "<button class='" + cls + "' data-date='" + iso + "' aria-label='" + this._formatDate(iso) + (event ? ": " + this._label(type) : "") + (mixedDay ? ", Mischtag" : "") + (manuallyChanged ? ", manuell geändert" : "") + "'>" + d.getDate() + (mixedDay ? "<span class='mixed-mark' aria-hidden='true'>M</span>" : "") + (manuallyChanged ? "<span class='manual-mark' title='Manuell geändert' aria-hidden='true'>✦</span>" : "") + "</button>";
+      const cls = ["day", holidayTitle ? "holiday" : "", isWeekend ? "weekend" : "", type ? "type-" + type : "", manuallyChanged ? "manual" : "", mixedDay ? "mixed" : "", d.getMonth() !== this._month.getMonth() ? "outside" : "", iso === todayIso ? "today" : "", iso === this._selected ? "selected" : "", selectedDates.has(iso) ? "range-selected" : ""].filter(Boolean).join(" ");
+      cells += "<button class='" + cls + "' data-date='" + iso + "'" +
+        (holidayTitle ? " title='" + holidayTitle + "'" : "") +
+        " aria-label='" + this._formatDate(iso) + (event ? ": " + this._label(type) : "") +
+        (mixedDay ? ", Mischtag" : "") + (manuallyChanged ? ", manuell geändert" : "") +
+        (holidayTitle ? ", " + holidayTitle : "") + "'><span class='day-number'>" + d.getDate() + "</span>" +
+        (holidayTitle ? "<span class='holiday-symbol holiday-mark' aria-hidden='true'>F</span>" : "") + (mixedDay ? "<span class='mixed-mark' aria-hidden='true'>M</span>" : "") + (manuallyChanged ? "<span class='manual-mark' title='Manuell geändert' aria-hidden='true'>✦</span>" : "") + "</button>";
     }
     const states = Object.values(this._hass.states || {});
     const sensorLines = states.filter((item) => item.entity_id.startsWith("sensor.") &&
@@ -1297,9 +1612,6 @@ class SteuertagePanel extends HTMLElement {
     const selectionTitle = selectedDateCount > 1
       ? numericDate(orderedSelectedDates[0]) + " bis " + numericDate(orderedSelectedDates.at(-1))
       : this._formatDate(this._selected);
-    const selectionSubhead = this._selectionMode === "multiple"
-      ? "Der gewählte Tagestyp wird auf alle markierten Tage angewendet."
-      : selectedLabel;
     const typeButton = (type, label, icon) =>
       "<button type='button' class='type-option " + (selectedType === type ? "selected-type" : "") +
       "' data-type='" + type + "'" + (this._busy ? " aria-disabled='true'" : "") + " aria-pressed='" + (selectedType === type ? "true" : "false") + "'>" +
@@ -1308,23 +1620,36 @@ class SteuertagePanel extends HTMLElement {
     const typeButtons = [
       typeButton("office", "Arbeitsstätte", "<svg viewBox='0 0 24 24' focusable='false' aria-hidden='true'><path d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z'/></svg>"),
       ...(homeOfficeEnabled ? [typeButton("home_office", "Homeoffice", "⌂")] : []),
+      typeButton("business_trip", "Dienstreise", "<ha-icon icon='mdi:briefcase-outline' aria-hidden='true'></ha-icon>"),
       typeButton("vacation", "Urlaub", "☀"),
       typeButton("sick_leave", "Krankheit", "<ha-icon icon='mdi:thermometer' aria-hidden='true'></ha-icon>"),
       typeButton("no_work", "Kein Arbeitstag", "—"),
     ].join("");
     const rangeMarkup = this._selectionMode === "range" && selectedDateCount > 1
       ? "<div class='date-range'><label>Von<input data-correction-from type='date' value='" + (this._correctionFrom || this._selected) + "'></label><label>Bis<input data-correction-to type='date' value='" + (this._correctionTo || this._selected) + "'></label></div>"
-      : this._selectionMode === "multiple"
-        ? "<p class='selection-hint'>" + (selectedDateCount === 0 ? "Keine Tage ausgewählt" : selectedDateCount === 1 ? "1 Tag ausgewählt" : selectedDateCount + " einzelne Tage ausgewählt") + "</p>"
-        : "";
+      : "";
     const selectedPanelMarkup = this._selected
-      ? "<section class='selection-card' aria-label='Ausgewählten Tag bearbeiten'><header class='selection-card-header'><div><span class='eyebrow'>AUSWAHL</span><h3>" + selectionTitle + "</h3><p class='selection-status'>" + selectionSubhead + "</p></div><span class='selection-count'>" + (selectedDateCount === 1 ? "1 Tag" : selectedDateCount + " Tage") + "</span></header>" + rangeMarkup +
-        "<section class='automatic-choice'><button type='button' class='automatic-button " + (selectedType === "automatic" ? "selected-type" : "") + "' data-type='automatic'" + (this._busy ? " aria-disabled='true'" : "") + " aria-pressed='" + (selectedType === "automatic" ? "true" : "false") + "'><span class='automatic-icon' aria-hidden='true'>↻</span><span class='automatic-copy'><strong class='automatic-title'><span class='automatic-title-current'>Automatik</span><span class='automatic-title-reset'>Zurück zur Automatik</span></strong><small>Manuelle Änderung zurücksetzen und automatische Erkennung verwenden</small></span><span class='default-badge'>STANDARD</span><span class='type-check' aria-hidden='true'>✓</span></button></section>" +
-        "<div class='type-picker'><div class='type-picker-heading'><span class='eyebrow'>MANUELL FESTLEGEN</span></div><div class='type-options'>" + typeButtons + "</div></div>" +
+      ? "<section class='selection-card' aria-label='Tagestyp ändern'>" +
+        "<header class='selection-card-header'><h3>" + selectionTitle + "</h3>" +
+        (selectedDateCount > 1 ? "<span class='selection-count'>" + selectedDateCount + " Tage</span>" : "") + "</header>" +
+        "<div class='type-options' role='group' aria-label='Tagestyp manuell festlegen'>" + typeButtons + "</div>" +
+        "<div class='selection-tools'><button type='button' class='automatic-button" +
+        (selectedType === "automatic" ? " selected-type" : "") + "' data-type='automatic'" +
+        (this._busy ? " aria-disabled='true'" : "") + " aria-pressed='" + (selectedType === "automatic") +
+        "' title='Automatische Erkennung verwenden'><span aria-hidden='true'>↻</span>" +
+        "<span class='automatic-title'><span class='automatic-title-current'>Automatik</span>" +
+        "<span class='automatic-title-reset'>Zurück zur Automatik</span></span>" +
+        "<span class='automatic-standard'>Standard</span></button>" + rangeMarkup + "</div>" +
+        (selectedDateCount === 1 ? "<p class='selection-status'>" + selectedLabel + "</p>" : "") + selectedHoliday +
         (selectedHistoryMarkup ? "<div class='selection-history'>" + selectedHistoryMarkup + "</div>" : "") +
         "<p class='message' role='status'" + (this._message ? "" : " hidden") + ">" + this._escape(this._message) + "</p></section>"
       : "";
     const tab = this._tab;
+    const panelConfig = this._panel?.config;
+    const buildLabel = /(?:^|[-.])beta(?:[.\d-]|$)/i.test(panelConfig?.version || "")
+      ? "BETA"
+      : panelConfig?.development ? "DEV" : "";
+    const buildBadge = buildLabel ? "<span class='header-badge'>" + buildLabel + "</span>" : "";
     const selectionControlsMarkup = "<div class='selection-mode-controls'>" +
       "<button class='multi-select-toggle' data-action='multi-select' aria-pressed='" + this._multiSelectMode + "'" +
       (!this._multiSelectMode && selectedDateCount >= 2 ? " hidden" : "") + ">" +
@@ -1332,17 +1657,18 @@ class SteuertagePanel extends HTMLElement {
       "<button class='clear-selection' data-action='clear-selection'" +
       (selectedDateCount < 2 ? " hidden" : "") + ">Auswahl aufheben</button></div>";
     const calendarHeaderMarkup = "<div class='calendar-overview'><div class='calendar-head'><h2>" + title + "</h2><div class='calendar-navigation'>" +
-      "<button class='today-nav' data-action='today' aria-label='Zum heutigen Datum springen'>Heute</button>" +
       "<div class='month-nav-group' role='group' aria-label='Monat wechseln'>" +
       "<button class='month-nav' data-action='prev' aria-label='Vorheriger Monat'>‹</button>" +
+      "<button class='today-nav' data-action='today' aria-label='Zum heutigen Datum springen'>Heute</button>" +
       "<button class='month-nav' data-action='next' aria-label='Nächster Monat'>›</button></div></div></div>" +
       monthStatsMarkup + "</div>";
     const selectionToolbarMarkup = "<div class='calendar-selection-toolbar'>" +
       selectionControlsMarkup + historyButtonsMarkup + "</div>";
     const content = tab === "calendar"
-      ? (this._calendarEntity() ? "<ha-card class='calendar-view'>" + calendarTabs + calendarHeaderMarkup + selectionToolbarMarkup + rangeFilterMarkup +
+      ? (this._calendarEntity() ? "<ha-card class='calendar-view'>" + calendarTabs + calendarHeaderMarkup + selectionToolbarMarkup +
         openReviewMarkup + "<div class='grid'>" + headers + cells + "</div>" +
-        "<div class='calendar-legend'><div class='legend-status'><strong>Legende</strong><span><i class='legend-dot office-dot'></i>Arbeitsstätte</span><span><i class='legend-dot home-dot'></i>Homeoffice</span><span><i class='legend-dot vacation-dot'></i>Urlaub</span><span><i class='legend-dot sick-dot'></i>Krankheit</span><span><i class='legend-dot no-work-dot'></i>Kein Arbeitstag</span><span class='legend-divider' aria-hidden='true'></span><span class='legend-pulse'><i class='legend-dot tracking-dot'></i>Erkennung läuft</span><span><i class='mixed-legend-mark'>M</i>Mischtag</span><span><i class='manual-legend-mark' aria-hidden='true'>✦</i>Manuell geändert</span></div></div>" + selectedPanelMarkup + "<p class='muted calendar-help calendar-help-desktop'>Halte ⌘ (Mac) oder Strg (Windows/Linux) gedrückt und klicke auf einzelne Tage, um sie an- oder abzuwählen. Einen Zeitraum markierst du durch Ziehen oder mit Umschalt-Klick. Für eine komplexere Auswahl nutze die Schaltfläche „Mehrfachauswahl“.</p><p class='muted calendar-help calendar-help-mobile'>Mehrfachauswahl einschalten und Tage per Tipp an- oder abwählen.</p></ha-card>" : calendars.length > 1 ? "<ha-card>" + calendarTabs + "<p>Bitte wähle eine Person aus, um den Kalender zu öffnen.</p></ha-card>" : "<ha-card><p>Es ist noch keine Person für Steuertage eingerichtet.</p></ha-card>")
+        selectedPanelMarkup + rangeFilterMarkup + (selectedPanelMarkup ? "" :
+          "<div class='calendar-legend'><div class='legend-status'><strong>Legende</strong><span><i class='legend-dot office-dot'></i>Arbeitsstätte</span><span><i class='legend-dot home-dot'></i>Homeoffice</span><span><i class='legend-dot business-trip-dot'></i>Dienstreise</span><span><i class='legend-dot vacation-dot'></i>Urlaub</span><span><i class='legend-dot sick-dot'></i>Krankheit</span><span><i class='legend-dot no-work-dot'></i>Kein Arbeitstag</span><span class='legend-divider' aria-hidden='true'></span><span class='legend-pulse'><i class='legend-dot tracking-dot'></i>Erkennung läuft</span><span><i class='mixed-legend-mark'>M</i>Mischtag</span>" + (holidayRegion ? "<span><i class='holiday-symbol' aria-hidden='true'>F</i>Feiertag</span>" : "") + "<span><i class='manual-legend-mark' aria-hidden='true'>✦</i>Manuell geändert</span></div></div>") + "<p class='muted calendar-help calendar-help-desktop'>Halte ⌘ (Mac) oder Strg (Windows/Linux) gedrückt und klicke auf einzelne Tage, um sie an- oder abzuwählen. Einen Zeitraum markierst du durch Ziehen oder mit Umschalt-Klick. Für eine komplexere Auswahl nutze die Schaltfläche „Mehrfachauswahl“.</p><p class='muted calendar-help calendar-help-mobile'>Mehrfachauswahl einschalten und Tage per Tipp an- oder abwählen.</p></ha-card>" : calendars.length > 1 ? "<ha-card>" + calendarTabs + "<p>Bitte wähle eine Person aus, um den Kalender zu öffnen.</p></ha-card>" : "<ha-card><p>Es ist noch keine Person für Steuertage eingerichtet.</p></ha-card>")
       : tab === "config" ? this._configMarkup(calendars) : this._exportMarkup(calendars);
     const headerStyles = `
       .top-actions .top-action {
@@ -1377,6 +1703,122 @@ class SteuertagePanel extends HTMLElement {
       }
     `;
     const calendarStyles = `
+      .selection-card {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 12px;
+        background: var(--secondary-background-color, var(--card-background-color, Canvas));
+      }
+      .selection-card-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .selection-card-header h3 { margin: 0; font-size: 15px; font-weight: 600; }
+      .selection-count, .selection-status { color: var(--secondary-text-color); font-size: 12px; }
+      .selection-count { white-space: nowrap; }
+      .selection-status, .selection-card .message { margin: 0; }
+      .selection-history .change-history { margin: 0; }
+      .type-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr));
+        gap: 6px;
+      }
+      .type-option, .automatic-button {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 38px;
+        padding: 4px 8px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color);
+        color: var(--primary-text-color);
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+      }
+      .type-option:hover, .automatic-button:hover,
+      .type-option.selected-type, .automatic-button.selected-type { border-color: var(--primary-color); }
+      .type-option.selected-type {
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+      }
+      .type-symbol {
+        display: grid;
+        flex: none;
+        place-items: center;
+        width: 18px;
+        color: inherit;
+        font-size: 16px;
+        --mdc-icon-size: 16px;
+      }
+      .type-option .type-check { margin-left: auto; font-weight: 700; }
+      .selection-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
+      .automatic-button {
+        border-color: color-mix(in srgb, var(--primary-color) 60%, var(--divider-color));
+        background: color-mix(in srgb, var(--primary-color) 12%, var(--card-background-color, Canvas));
+        font-weight: 600;
+      }
+      .automatic-button.selected-type {
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+      }
+      .automatic-standard {
+        margin-inline-start: 2px;
+        padding: 2px 6px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        font-size: 11px;
+        line-height: 1.2;
+      }
+      .automatic-title { display: grid; }
+      .automatic-title > span { grid-area: 1 / 1; }
+      .automatic-title-current, .automatic-button.selected-type .automatic-title-reset { visibility: hidden; }
+      .automatic-button.selected-type .automatic-title-current { visibility: visible; }
+      .selection-tools .date-range { margin: 0; gap: 8px; }
+      .selection-tools .date-range label { font-size: 12px; }
+      .selection-tools .date-range input { box-sizing: border-box; max-width: 100%; font-size: 13px; }
+      @media (max-width: 650px) {
+        .selection-card { padding: 8px; }
+        .type-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .type-label { min-width: 0; overflow-wrap: anywhere; }
+        .type-option, .automatic-button { min-height: 44px; }
+      }
+      .holiday-symbol {
+        display: inline-grid;
+        place-items: center;
+        inline-size: 14px;
+        block-size: 14px;
+        box-sizing: border-box;
+        border: 1px solid #765500;
+        border-radius: 4px;
+        background: #f9cc52;
+        color: #352600;
+        font-size: 9px;
+        font-weight: 700;
+        font-style: normal;
+        line-height: 1;
+      }
+      .day.holiday {
+        display: grid;
+        align-content: center;
+        justify-items: center;
+        row-gap: 2px;
+        padding: 2px 0;
+      }
+      .day.holiday .day-number { line-height: 1.2; }
+      .holiday-mark {
+        inline-size: 11px;
+        block-size: 11px;
+        font-size: 8px;
+        pointer-events: none;
+      }
       .calendar-head > h2, .calendar-head > .calendar-navigation { grid-row: 1; }
       .calendar-selection-toolbar {
         display: flex;
@@ -1414,6 +1856,26 @@ class SteuertagePanel extends HTMLElement {
       .history-symbol { font-size: 16px; line-height: 1; }
       .calendar-help-mobile { display: none; }
       .day { touch-action: manipulation; }
+      .day:is(.selected, .range-selected) {
+        font-weight: 750;
+        opacity: 1;
+      }
+      .day:is(.selected, .range-selected)::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border: 3px solid var(--primary-color, #ec9b2d);
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px var(--primary-text-color, CanvasText);
+        pointer-events: none;
+      }
+      .day:is(.selected, .range-selected):focus-visible {
+        outline: 2px solid var(--primary-text-color, CanvasText);
+        outline-offset: 2px;
+      }
+      .day.today.type-tracking:is(.selected, .range-selected)::after {
+        inset: 5px;
+      }
       .day.today.type-tracking::after {
         content: "";
         position: absolute;
@@ -1491,7 +1953,6 @@ class SteuertagePanel extends HTMLElement {
         .calendar-view .open-review-card { margin-block: 18px 22px; }
         .calendar-view .grid { gap: 5px; }
         .calendar-view .calendar-legend { margin-block: 22px; }
-        .calendar-view .selection-card { margin-top: 22px; }
         .calendar-help-desktop { display: none; }
         .calendar-help-mobile { display: block; margin: 16px 0 0; }
       }
@@ -1528,9 +1989,9 @@ class SteuertagePanel extends HTMLElement {
     `;
     // Keep the stylesheet mounted so replacing the view cannot reset its scroll container.
     if (!this._styles.textContent) {
-      this._styles.textContent = ":host{display:block;height:100vh;height:100dvh;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;color:var(--steuertage-text,var(--primary-text-color,#202124));background:var(--steuertage-page-background,var(--lovelace-background,var(--primary-background-color,#f5f6f8)));background-attachment:fixed;min-height:100vh;font-family:var(--paper-font-body1_-_font-family,Roboto,Noto,sans-serif)}.page{max-width:1050px;margin:auto;padding:24px}.top{display:flex;align-items:center;gap:14px;margin-bottom:18px;padding:12px 16px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:16px;background:var(--steuertage-card-background,var(--card-background-color));box-shadow:var(--ha-card-box-shadow,0 1px 3px rgba(0,0,0,.06))}.top .top-info-button{margin-left:auto;flex:0 0 36px}.app-mark{width:46px;height:46px;flex:0 0 46px;overflow:hidden;border-radius:12px}.app-mark img{width:100%;height:100%;object-fit:contain}.developer-credit a{color:inherit;text-decoration:none}.developer-credit a:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.brand-meta{display:flex;gap:6px;margin-top:5px;color:var(--steuertage-muted,var(--secondary-text-color));font-size:11px}.brand{display:grid;gap:2px}.top h1{font-size:24px;font-weight:500;margin:0}.brand p{margin:0;color:var(--secondary-text-color);font-size:14px}.tabs{display:flex;gap:8px;flex-wrap:wrap;padding:5px;margin:0 0 20px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background));box-shadow:var(--ha-card-box-shadow,0 1px 2px rgba(0,0,0,.05))}.tabs button,.actions button,.month-nav,.today-nav,.multi-select-toggle,.clear-selection{font:inherit;color:var(--primary-text-color);background:var(--ha-card-background,var(--card-background-color,Canvas));border:1px solid var(--divider-color);border-radius:8px;padding:9px 14px;cursor:pointer}.tabs button{border:0;background:transparent}.tabs button.active{color:var(--primary-color);border-color:var(--primary-color);background:var(--steuertage-card-background,var(--card-background-color));box-shadow:0 1px 4px rgba(0,0,0,.12);font-weight:650}.multi-select-toggle[aria-pressed='true']{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color);font-weight:600}.selection-mode-controls{display:flex;align-items:center;gap:8px;flex:none}.clear-selection{color:var(--secondary-text-color);background:transparent}.clear-selection[hidden]{display:none}.actions button.selected-type{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color);font-weight:600;box-shadow:0 0 0 2px var(--primary-color)}.day.range-selected{outline:2px solid var(--primary-color);outline-offset:-3px}.export-check{padding:8px 12px;margin:0 0 14px}.export-check h3{font-size:15px;margin:0 0 4px}.export-check .validation.ok{color:var(--success-color,#2e7d32);font-size:13px;margin:0}.export-check.has-issues{border:1px solid var(--error-color);background:var(--ha-card-background,var(--card-background-color))}.export-check.has-issues h3{color:var(--error-color)}.preset-row{display:flex;flex-wrap:wrap;gap:8px;grid-column:1/-1}.actions button.selected-type{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color);font-weight:600;box-shadow:0 0 0 2px var(--primary-color)}.day.range-selected{outline:2px solid var(--primary-color);outline-offset:-3px}.export-check{padding:8px 12px;margin:0 0 14px}.export-check h3{font-size:15px;margin:0 0 4px}.export-check .validation.ok{color:var(--success-color,#2e7d32);font-size:13px;margin:0}.preset-row{display:flex;flex-wrap:wrap;gap:8px;grid-column:1/-1}.view-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 20px}.view-header h2{font-size:26px;line-height:1.2;font-weight:650;margin:2px 0 7px;letter-spacing:-.02em}.view-header p{margin:0;color:var(--steuertage-muted,var(--secondary-text-color));font-size:14px;line-height:1.5}.eyebrow{display:block;color:var(--primary-color);font-size:11px;font-weight:700;letter-spacing:.09em;margin-bottom:4px}.header-badge{border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:999px;padding:7px 11px;color:var(--steuertage-muted,var(--secondary-text-color));font-size:12px;white-space:nowrap}.header-actions{display:flex;align-items:center;gap:8px}.info-icon-button,.dialog-close-button{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:50%;background:var(--steuertage-card-background,var(--card-background-color));color:var(--steuertage-text,var(--primary-text-color));font:inherit;font-size:20px;line-height:1;cursor:pointer}.info-icon-button:hover,.info-icon-button:focus-visible,.dialog-close-button:hover,.dialog-close-button:focus-visible{border-color:var(--primary-color);outline:2px solid var(--primary-color);outline-offset:2px}.config-info-dialog{width:min(620px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:86vh;margin:auto;padding:0;overflow:auto;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:18px;background:var(--steuertage-card-background,var(--card-background-color,#fff));color:var(--steuertage-text,var(--primary-text-color));box-shadow:0 18px 60px rgba(0,0,0,.3)}.config-info-dialog::backdrop{background:rgba(0,0,0,.46);backdrop-filter:blur(2px)}.config-info-dialog-content{padding:22px}.config-info-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}.config-info-header h3{margin:2px 0;font-size:20px}.config-info-dialog .explanation-card{margin:0;padding:0;border:0;background:transparent;box-shadow:none}.config-info-links{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--steuertage-divider,var(--divider-color))}.config-info-links a{display:inline-flex;align-items:center;padding:9px 12px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:10px;color:var(--primary-color);text-decoration:none;font-weight:600}.config-info-links a:hover{border-color:var(--primary-color);background:var(--secondary-background-color,var(--steuertage-card-background))}@media(max-width:600px){.config-info-dialog-content{padding:18px}.config-info-links a{width:100%;justify-content:center}}.config-card{padding:26px;border-radius:18px;background:var(--steuertage-card-background,var(--card-background-color,#fff));box-shadow:var(--ha-card-box-shadow,0 1px 3px rgba(0,0,0,.08))}.config-title{align-items:flex-start}.config-title h3{font-size:18px;font-weight:650}.settings-link{display:inline-flex;align-items:center;gap:6px;border-radius:9px;padding:8px 12px;background:var(--secondary-background-color,var(--primary-background-color));text-decoration:none;font-weight:600}.config-card dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:26px}.config-card dt,.config-card dd,.config-card h3{-webkit-user-select:text;user-select:text}.config-card dl>div{display:flex;flex-direction:column;justify-content:center;gap:11px;min-height:88px;padding:18px 20px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:11px;background:var(--secondary-background-color,var(--steuertage-card-background))}.config-card dt{font-size:12px;line-height:1.4;margin:0;color:var(--steuertage-muted,var(--secondary-text-color))}.config-card dd{font-size:14px;line-height:1.5;font-weight:550;margin:0;overflow-wrap:anywhere}.validation.ok{border-inline-start:3px solid var(--success-color,#43a047)}.validation.warning{border-inline-start:3px solid var(--error-color,#db4437)}.explanation-card{margin-top:20px;padding:20px;border-radius:16px}.export-period{padding:18px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:16px;background:var(--steuertage-card-background,var(--card-background-color,#fff))}.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.section-heading h3{margin:0;font-size:17px}.person-picker{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--primary-color);border-radius:12px;background:var(--secondary-background-color,var(--steuertage-card-background));font-weight:650}.person-picker span{font-size:13px;color:var(--steuertage-muted,var(--secondary-text-color))}.person-picker select{min-width:150px;padding:8px 10px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:8px;background:var(--steuertage-card-background,var(--card-background-color));color:var(--steuertage-text,var(--primary-text-color));font:inherit;font-weight:650}.backup-card{margin-top:18px}.backup-card [data-backup]{font-weight:700}.export-controls{margin:12px 0 0}.preset-row{width:100%;padding:4px 0 6px}.preset-row .export-button{border-radius:999px;background:var(--secondary-background-color,var(--steuertage-card-background));font-weight:600}.export-button{transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}.export-button:hover:not(:disabled){transform:translateY(-1px);border-color:var(--primary-color);box-shadow:0 2px 8px rgba(0,0,0,.12)}.export-stats .stat{border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;padding:16px;background:var(--steuertage-card-background,var(--card-background-color,#fff))}.export-stats .stat strong{font-size:24px}.export-check{border-radius:12px}.disclaimer{border-radius:0 10px 10px 0}.app-disclaimer{margin:24px 2px 8px;padding:12px 2px 0;border-top:1px solid var(--steuertage-divider,var(--divider-color));color:var(--steuertage-text,var(--primary-text-color));font-size:11px;line-height:1.55;text-align:center}@media(max-width:700px){.page{padding:14px}.view-header{gap:8px}.view-header h2{font-size:22px}.header-badge{font-size:11px}.config-card dl{grid-template-columns:1fr}.config-title{flex-direction:column}.export-period{padding:14px}ha-card{padding:16px}}ha-card{display:block;background:var(--steuertage-card-background,var(--ha-card-background,var(--card-background-color,#fff)));color:var(--steuertage-text,var(--primary-text-color,#202124));border:1px solid var(--steuertage-divider,var(--divider-color,#dadce0));border-radius:var(--ha-card-border-radius,16px);padding:24px;box-shadow:var(--ha-card-box-shadow,0 2px 8px rgba(0,0,0,.12))}.calendar-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px}.calendar-head h2{flex:1;text-align:center;font-size:20px;font-weight:500;margin:0;text-transform:capitalize}.month-nav-group{display:flex;gap:6px;flex:0 0 auto}.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.weekday{text-align:center;color:var(--secondary-text-color);font-size:13px;padding:8px 0}.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px;color:var(--secondary-text-color);font-size:13px}.legend span{display:inline-flex;align-items:center;gap:6px}.legend-dot{width:11px;height:11px;border-radius:50%;display:inline-block}.office-dot{background:var(--info-color,#039be5)}.home-dot{background:var(--success-color,#43a047)}.vacation-dot{background:var(--warning-color,#fbc02d)}.sick-dot{background:var(--error-color,#db4437)}.tracking-dot,.automatic-dot{background:#8b5cf6}.no-work-dot{background:var(--divider-color,#9e9e9e)}.weekday.weekend-label{color:var(--secondary-text-color);font-weight:600}.day{position:relative;min-height:44px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit;cursor:pointer;-webkit-user-select:none;user-select:none}.day.weekend{background:color-mix(in srgb,var(--card-background-color,Canvas) 95%,var(--primary-text-color,#202124) 5%);border-bottom:2px solid var(--divider-color)}.day.outside{opacity:.45}.day.today{box-shadow:inset 0 0 0 2px var(--secondary-text-color,#6b7280)}.day.selected{outline:2px solid var(--primary-color)}.day.mixed .mixed-mark{position:absolute;right:4px;bottom:3px;font-size:8px;line-height:1;font-weight:700;color:var(--secondary-text-color);opacity:.8}.mixed-legend-mark{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:4px;border:1px solid var(--divider-color);font-size:9px;font-style:normal;font-weight:700;color:var(--secondary-text-color)}.mixed-tag{display:inline-block;margin-left:5px;padding:2px 6px;border:1px solid var(--divider-color);border-radius:999px;font-size:10px;font-weight:600;color:var(--secondary-text-color);white-space:nowrap}.day.manual .manual-mark{position:absolute;top:3px;right:4px;font-size:9px;line-height:1;color:var(--secondary-text-color);opacity:.78;pointer-events:none}.manual-legend-mark{display:inline-flex;align-items:center;justify-content:center;font-size:11px;line-height:1;color:var(--secondary-text-color);opacity:.8;font-style:normal}.person-tabs{display:flex;gap:8px;margin:0 0 16px;border-bottom:1px solid var(--divider-color)}.person-tab{font:inherit;color:var(--secondary-text-color);background:transparent;border:0;border-bottom:2px solid transparent;padding:10px 14px;cursor:pointer}.person-tab[aria-pressed='true']{color:var(--primary-color);border-bottom-color:var(--primary-color);font-weight:600}.config-card,.info-card{border:1px solid var(--divider-color);border-radius:10px;padding:16px;margin:14px 0}.config-title{display:flex;justify-content:space-between;align-items:center;gap:12px}.config-title h3,.info-card h3{margin:0 0 8px;font-size:17px;font-weight:500}.config-title a{color:var(--primary-color)}dl{margin:10px 0 0}.config-card dl>div{display:grid;grid-template-columns:minmax(130px,1fr) 2fr;gap:10px;padding:7px 0;border-top:1px solid var(--divider-color)}dt{color:var(--secondary-text-color)}dd{margin:0;overflow-wrap:anywhere}.info-card li{margin:8px 0}.export-controls{display:flex;align-items:end;flex-wrap:wrap;gap:10px;margin:16px 0}.export-controls label{display:grid;gap:5px;color:var(--secondary-text-color)}.export-controls input,.export-controls select,.export-button{font:inherit;color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:7px;padding:9px 12px}.export-button{cursor:pointer}.export-button:disabled{opacity:.5;cursor:wait}.export-stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:16px}.muted{color:var(--secondary-text-color);font-size:13px}.disclaimer{margin-top:16px;padding:12px 14px;border-inline-start:3px solid var(--warning-color,var(--primary-color));background:var(--secondary-background-color,var(--card-background-color,Canvas));color:var(--secondary-text-color);font-size:13px;line-height:1.5}.date-range{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}.date-range label{display:grid;gap:5px;color:var(--secondary-text-color)}.date-range input{font:inherit;color:var(--primary-text-color);background:var(--ha-card-background,var(--card-background-color,Canvas));border:1px solid var(--divider-color);border-radius:7px;padding:8px 10px}.date-range input:focus,.date-range input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px;border-color:var(--primary-color)}.calendar-help{margin:8px 0 16px;text-align:center;font-size:12px}.selection-instructions{margin:8px 0 12px}.selection-hint{margin:12px 0;padding:10px 12px;border-radius:9px;background:var(--secondary-background-color,var(--card-background-color));font-weight:600}.validation{padding:10px 12px;border-radius:8px;margin-top:12px}.validation.ok{color:var(--success-color,var(--primary-text-color));background:var(--secondary-background-color,var(--card-background-color,Canvas))}.validation.warning{color:var(--error-color,var(--primary-text-color));background:var(--secondary-background-color,var(--card-background-color,Canvas))}.validation ul{margin-bottom:0}.checklist{padding-left:20px}.checklist li{margin:6px 0}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--divider-color)}th{color:var(--secondary-text-color);font-weight:500}.needs-review{background:var(--secondary-background-color)}.tracking-row{background:var(--secondary-background-color)}.manual-tag{display:inline-block;border-radius:10px;background:var(--secondary-background-color);padding:2px 7px;font-size:12px;color:var(--secondary-text-color)}.text-button{border:0;background:transparent;color:var(--primary-color);font:inherit;cursor:pointer;padding:0}.change-history{margin-top:12px;color:var(--secondary-text-color)}.change-history ul{padding-left:20px}.change-history time{font-variant-numeric:tabular-nums}.day.type-office,.day.type-office_and_home_office{background:var(--info-color,#039be5);color:var(--text-primary-color,#fff)}.day.type-home_office{background:var(--success-color,#43a047);color:var(--text-primary-color,#fff)}.day.type-vacation{background:var(--warning-color,#fbc02d);color:var(--primary-text-color)}.day.type-sick_leave,.day.type-needs_review{background:var(--error-color,#db4437);color:var(--text-primary-color,#fff)}.stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:0 0 16px}.stat{display:flex;flex-direction:column;gap:4px;background:var(--secondary-background-color,var(--card-background-color));border-radius:8px;padding:10px 12px}.stat span{color:var(--secondary-text-color);font-size:12px}.stat strong{font-size:20px;font-weight:500}.selection{border-top:1px solid var(--divider-color);margin-top:20px;padding-top:12px}.selection h3{font-size:17px;margin:0 0 6px}.selection p{color:var(--secondary-text-color)}.actions{display:flex;flex-wrap:wrap;gap:8px}.actions button{padding:8px 10px}.message:empty{display:none}.message{min-height:1em}ha-card>h2{font-weight:500}.page li{margin:8px 0}@media(max-width:600px){.calendar-head{gap:8px}.calendar-head h2{flex-basis:100%;order:-1}.selection-mode-controls{width:100%}.selection-mode-controls .multi-select-toggle{flex:1}.today-nav{flex:0 0 auto}.page{padding:12px}.day{min-height:38px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.export-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.config-title{align-items:flex-start;flex-direction:column}.grid{gap:3px}.tabs{overflow-x:auto}.tabs button{white-space:nowrap;padding:8px 10px}}.selection-card{margin-top:20px;padding:20px;border:1px solid var(--divider-color);border-radius:14px;background:var(--secondary-background-color,var(--card-background-color,Canvas));box-shadow:var(--ha-card-box-shadow,none)}.selection-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:1px solid var(--divider-color)}.selection-card-header h3{margin:4px 0;font-size:22px;font-weight:600}.selection-card-header .eyebrow,.type-picker-heading .eyebrow{font-size:10px;letter-spacing:.08em;color:var(--secondary-text-color)}.selection-status{margin:0;color:var(--secondary-text-color);font-size:14px}.selection-count{flex:none;border-radius:999px;padding:6px 10px;background:var(--card-background-color);color:var(--secondary-text-color);font-size:12px;font-weight:600}.automatic-choice{padding:14px 0;border-bottom:1px solid var(--divider-color)}.automatic-button{position:relative;display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border:1px solid var(--divider-color);border-radius:11px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit;cursor:pointer}.automatic-button.selected-type{border-color:var(--primary-color);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary-color) 18%,transparent);background:var(--primary-color);color:var(--text-primary-color,#fff)}.automatic-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--secondary-background-color,var(--card-background-color));font-size:21px}.automatic-copy{flex:1;min-width:0}.automatic-button .automatic-title{display:grid}.automatic-title>span{grid-area:1/1}.automatic-title-current,.automatic-button .type-check{visibility:hidden}.automatic-button.selected-type .automatic-title-current,.automatic-button.selected-type .type-check{visibility:visible}.automatic-button.selected-type .automatic-title-reset{visibility:hidden}.automatic-button strong,.automatic-button small{display:block}.automatic-button small{margin-top:3px;color:var(--secondary-text-color);font-size:12px}.automatic-button.selected-type small{color:inherit;opacity:.82}.default-badge{margin-left:auto;padding:4px 7px;border-radius:999px;background:var(--secondary-background-color,var(--card-background-color));color:var(--secondary-text-color);font-size:9px;font-weight:700;letter-spacing:.05em}.type-check{font-weight:700}.type-picker{padding-top:16px}.type-picker-heading{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px}.shortcut-note{color:var(--secondary-text-color);font-size:11px}.type-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:9px}.type-option{position:relative;display:flex;align-items:center;gap:9px;min-height:50px;padding:10px 12px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background-color .15s,box-shadow .15s}.type-option:hover{border-color:var(--primary-color);box-shadow:0 1px 4px color-mix(in srgb,var(--primary-color) 20%,transparent)}.type-option.selected-type{border:2px solid var(--primary-color);padding:9px 11px;background:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:600}.type-symbol{display:grid;place-items:center;width:27px;height:27px;border-radius:8px;background:var(--secondary-background-color,var(--card-background-color));color:var(--primary-color);font-size:16px}.type-option kbd{margin-left:auto;padding:2px 6px;border:1px solid var(--divider-color);border-radius:5px;background:var(--secondary-background-color,var(--card-background-color));color:var(--secondary-text-color);font-family:inherit;font-size:11px;font-weight:600}.type-option.selected-type kbd{border-color:transparent;background:rgba(255,255,255,.22);color:inherit}.type-option .type-check{margin-left:auto}.selection-history{margin-top:14px}.selection-history .change-history{margin-top:0}.selection-card .message{margin:12px 0 0;padding:9px 11px;border-radius:8px;background:var(--card-background-color);color:var(--secondary-text-color)}.day.type-tracking{background:#8b5cf6;color:#fff}@keyframes steuertage-tracking-pulse{0%{box-shadow:0 0 0 0 rgba(139,92,246,.55)}70%{box-shadow:0 0 0 7px rgba(139,92,246,0)}100%{box-shadow:0 0 0 0 rgba(139,92,246,0)}}@media(max-width:650px){.page{padding:14px}.top{min-width:0}.brand{min-width:0}.brand-meta{flex-wrap:wrap}.config-card{padding:18px}.config-card dl{grid-template-columns:1fr;gap:10px}.config-card dl>div{min-height:0;padding:14px 16px}.legend-shortcuts small{width:100%;margin-left:0}}.calendar-legend{display:grid;gap:14px;margin:18px 8px 20px;padding:16px 18px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background))}.legend-status{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px}.legend-status>span{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--steuertage-muted,var(--secondary-text-color))}.legend-status>strong{font-size:12px;color:var(--steuertage-text,var(--primary-text-color))}.legend-status small{margin-left:auto;color:var(--steuertage-muted,var(--secondary-text-color));font-size:11px}.legend-status kbd{min-width:19px;padding:2px 6px;text-align:center;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:5px;background:var(--steuertage-card-background,var(--card-background-color));font:inherit;font-size:11px;font-weight:600}.legend-pulse{font-weight:600}.legend-pulse .tracking-dot{animation:steuertage-tracking-pulse 1.8s ease-out infinite}.legend-status>.legend-divider{display:block;flex:0 0 1px;width:1px;height:16px;background:var(--steuertage-divider,var(--divider-color));opacity:.8}/* Compact, consistent configuration rows */.config-card dl{align-items:start;grid-auto-rows:minmax(0,auto);gap:12px;margin-top:20px}.config-card dl>div{display:grid;grid-template-columns:minmax(125px,.9fr) minmax(0,1.5fr);align-items:start;justify-content:initial;gap:8px 14px;min-height:0;padding:14px 16px}.config-card dt{line-height:1.35}.config-card dd{line-height:1.4}@media(max-width:700px){.config-card dl{grid-template-columns:1fr;gap:9px}.config-card dl>div{grid-template-columns:minmax(115px,.8fr) minmax(0,1.2fr);padding:12px 14px}}@media(prefers-reduced-motion:reduce){.legend-pulse .tracking-dot{animation:none}}@media(max-width:650px){.export-period .section-heading{flex-direction:column;align-items:stretch}.person-picker{width:100%;max-width:100%;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr);gap:6px}.person-picker select{width:100%;min-width:0;max-width:100%;box-sizing:border-box}}.backup-feedback{display:flex;align-items:flex-start;gap:12px;margin-top:16px;padding:16px;border:1px solid var(--divider-color);border-radius:14px;background:var(--secondary-background-color,var(--card-background-color))}.backup-feedback-icon{display:grid;place-items:center;width:28px;height:28px;flex:0 0 28px;border-radius:50%;font-weight:700;background:var(--info-color,#1976d2);color:var(--text-primary-color,#fff)}.backup-feedback.success{border-color:var(--success-color,#2e7d32)}.backup-feedback.success .backup-feedback-icon{background:var(--success-color,#2e7d32)}.backup-feedback.error{border-color:var(--error-color,#c62828)}.backup-feedback.error .backup-feedback-icon{background:var(--error-color,#c62828)}.backup-feedback strong{display:block;margin:2px 0 4px}.backup-feedback p{margin:0 0 10px;color:var(--secondary-text-color);line-height:1.5}.backup-actions{display:flex;flex-wrap:wrap;gap:10px}.restore-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.export-button.primary{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color);font-weight:600}.dialog-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.48)}.restore-dialog{width:min(560px,100%);max-height:min(90vh,760px);overflow:auto;padding:24px;border:1px solid var(--divider-color);border-radius:18px;background:var(--card-background-color,var(--primary-background-color,Canvas));color:var(--primary-text-color);box-shadow:0 18px 60px rgba(0,0,0,.28)}.restore-dialog h3{font-size:22px;margin:4px 0 12px}.restore-summary{padding:12px 14px;border-radius:12px;background:var(--secondary-background-color,var(--primary-background-color));line-height:1.55}.restore-options{display:grid;gap:10px;margin:18px 0 0;padding:14px;border:1px solid var(--divider-color);border-radius:14px}.restore-options legend{padding:0 6px;font-weight:600}.restore-option{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--divider-color);border-radius:12px;cursor:pointer}.restore-option:has(input:checked){border-color:var(--primary-color);box-shadow:0 0 0 1px var(--primary-color)}.restore-option input{margin:3px 0 0;accent-color:var(--primary-color)}.restore-option span{display:grid;gap:4px}.restore-option small{color:var(--secondary-text-color);line-height:1.45}.restore-progress{color:var(--primary-color);font-weight:600}.open-review-card{display:grid;gap:10px;margin:16px 0;padding:14px 16px;border:1px solid var(--divider-color);border-radius:14px;background:var(--secondary-background-color,var(--card-background-color))}.open-review-heading{display:flex;align-items:center;justify-content:space-between}.open-review-heading>div{display:grid;gap:3px}.open-review-heading strong{font-size:15px}.open-review-count{display:grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:16px;background:var(--warning-color,#ed9b00);color:var(--text-primary-color,#fff);font-weight:700}.open-review-days{display:flex;flex-wrap:wrap;gap:8px}.review-day-chip{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--divider-color);border-radius:10px;color:var(--primary-text-color);background:var(--card-background-color);font:inherit;text-align:left;cursor:pointer}.review-day-chip small{color:var(--secondary-text-color)}.review-day-chip.needs-review{border-color:var(--error-color,#c62828)}.review-day-chip.tracking{border-color:var(--primary-color)}.review-more{align-self:center;color:var(--secondary-text-color);font-size:13px}.open-review-card.all-clear{display:flex;align-items:center;gap:10px;color:var(--success-color,#2e7d32)}.open-review-card.all-clear strong,.open-review-card.all-clear small{display:block}.open-review-card.all-clear small{margin-top:3px;color:var(--secondary-text-color)}.open-review-check{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--success-color,#2e7d32);color:var(--text-primary-color,#fff);font-weight:700}@media(max-width:600px){.restore-dialog{padding:18px}.restore-dialog-actions{flex-direction:column-reverse}.restore-dialog-actions button{width:100%}}.app-disclaimer{display:grid;justify-items:center;gap:5px;max-width:820px;margin:30px auto 12px;padding:16px 14px 4px;border-top:1px solid var(--steuertage-divider,var(--divider-color));color:var(--steuertage-text,var(--primary-text-color));font-size:11px;line-height:1.55;text-align:center}.app-disclaimer p{margin:0}.disclaimer-label{color:var(--steuertage-text,var(--primary-text-color));font-size:11px;font-weight:700;letter-spacing:.1em}.disclaimer-caveat{font-weight:600}.calendar-head{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;justify-content:initial;flex-wrap:initial}.selection-mode-controls{grid-column:1;justify-self:start;min-width:0}.calendar-head h2{grid-column:2;min-width:max-content;flex:none}.calendar-navigation{grid-column:3;justify-self:end;display:flex;align-items:center;gap:6px}.data-disclosure{margin:12px 0;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background,var(--card-background-color)))}.data-disclosure>summary{display:grid;grid-template-columns:minmax(0,1fr) clamp(100px,30vw,140px) 16px;align-items:center;gap:12px;padding:15px 18px;cursor:pointer;font-weight:600;list-style:none}.data-disclosure>summary::-webkit-details-marker{display:none}.data-disclosure>summary:after{content:'⌄';justify-self:end;color:var(--secondary-text-color);font-size:18px;transition:transform .16s ease}.data-disclosure[open]>summary:after{transform:rotate(180deg)}.data-disclosure>summary small{margin:0;color:var(--secondary-text-color);font-size:12px;font-weight:500;text-align:center}.data-disclosure[open]>summary{border-bottom:1px solid var(--steuertage-divider,var(--divider-color))}.disclosure-content{padding:4px 16px 16px}.disclosure-content>p:first-child{margin-top:12px}.change-log-list{display:grid;gap:8px;margin:12px 0 0;padding:0;list-style:none}.change-log-list li{display:flex;align-items:center;padding:11px 12px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:10px}.change-log-list li span{display:grid;gap:4px}.change-log-list small{color:var(--secondary-text-color)}@media(max-width:600px){.calendar-head{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:6px}.selection-mode-controls{width:auto}.calendar-head h2{grid-column:2;flex-basis:auto;font-size:16px}.calendar-navigation{gap:4px}.app-disclaimer{margin-top:24px;padding-inline:6px}.data-disclosure>summary{padding:13px 14px;grid-template-columns:minmax(0,1fr) clamp(94px,30vw,120px) 16px}.disclosure-content{padding:4px 10px 12px}}.range-filter{display:grid;gap:10px;margin:14px 0;padding:14px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background,var(--card-background-color)))}.range-filter-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.range-filter-heading>div:first-child{display:grid;gap:3px}.range-filter-heading small,.range-filter>small{color:var(--secondary-text-color);font-size:12px}.range-filter-presets,.range-weekday-options{display:flex;flex-wrap:wrap;gap:6px}.range-filter button{font:inherit;color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:999px;background:var(--card-background-color);padding:6px 10px;cursor:pointer}.range-weekday.active{border-color:var(--primary-color);background:var(--primary-color);color:var(--text-primary-color,#fff)}@media(max-width:600px){.range-filter-heading{align-items:flex-start;flex-direction:column}.range-filter-presets{width:100%}.range-filter-presets button{flex:1}.range-weekday-options{justify-content:space-between}}.top .data-management-button{margin-left:auto;flex:0 0 36px}.top .top-info-button{margin-left:0;flex:0 0 36px}.data-management-dialog{width:min(680px,calc(100vw - 32px));max-width:none;max-height:min(90dvh,900px);margin:auto;padding:0;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:20px;background:var(--steuertage-card-background,var(--card-background-color));color:var(--steuertage-text,var(--primary-text-color));box-shadow:var(--ha-card-box-shadow,0 16px 48px rgba(0,0,0,.28));overflow:auto}.data-management-dialog::backdrop{background:rgba(0,0,0,.48);backdrop-filter:blur(2px)}.data-management-content{padding:24px}.data-management-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.data-management-header h2{margin:4px 0;font-size:22px}.data-management-header p{margin:4px 0;color:var(--secondary-text-color);line-height:1.45}.data-management-header .dialog-close-button{flex:0 0 auto}.data-management-dialog .backup-card,.restore-review-card{display:grid;gap:12px;padding:18px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--card-background-color))}.data-management-dialog .backup-card p,.restore-review-card p{margin:0;line-height:1.55}.data-management-dialog .backup-actions{margin-top:4px}.backup-launch{display:flex;justify-content:flex-end;margin:20px 0}.data-management-dialog .restore-options{margin:8px 0}.data-management-dialog .restore-dialog-actions{margin-top:16px}@media(max-width:600px){.data-management-content{padding:18px}.data-management-header h2{font-size:19px}.data-management-dialog .backup-actions{display:grid}.data-management-dialog .backup-actions button{width:100%}.data-management-dialog .restore-dialog-actions{flex-direction:column-reverse}.data-management-dialog .restore-dialog-actions button{width:100%}}.type-symbol svg{display:block;width:17px;height:17px;fill:currentColor}@media(max-width:650px){.top{display:grid;grid-template-columns:36px 40px minmax(0,1fr);grid-template-rows:auto auto;align-items:center;gap:8px 10px;padding:12px}.top ha-menu-button{grid-column:1;grid-row:1}.top .app-mark{grid-column:2;grid-row:1;width:40px;height:40px;flex:0 0 40px}.top .brand{grid-column:3;grid-row:1;min-width:0;gap:3px}.top .brand h1{font-size:20px;line-height:1.15}.top .brand p{font-size:12px;line-height:1.35}.top .brand-meta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:10px}.top .data-management-button{grid-column:2;grid-row:2;justify-self:end;margin:0;flex:0 0 36px}.top .top-info-button{grid-column:3;grid-row:2;justify-self:end;margin:0;flex:0 0 36px}}.config-card{box-shadow:none;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background,var(--card-background-color)))}.config-card dl>div{box-shadow:none}.top-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex:0 0 auto}.top .data-management-button,.top .top-info-button{margin:0;flex:0 0 36px}.config-info-dialog .dialog-close-button{box-sizing:border-box;flex:0 0 36px;min-width:36px;min-height:36px;aspect-ratio:1;border-radius:50%}@media(max-width:650px){.top .top-actions{grid-column:3;grid-row:2;justify-self:end;margin:0}.top .data-management-button,.top .top-info-button{margin:0;flex:0 0 36px}}@media(max-width:650px){:host{height:auto;min-height:100dvh;overflow-y:visible;overscroll-behavior:auto}.page{box-sizing:border-box;min-height:100dvh;padding-bottom:max(10px,env(safe-area-inset-bottom,0px))}.range-filter{display:none}.app-disclaimer{margin-bottom:0}}@media(max-width:650px){.top{grid-template-columns:36px minmax(0,1fr);grid-template-rows:auto auto auto auto;align-items:start}.top ha-menu-button{grid-column:1;grid-row:1;align-self:start}.top .app-mark{grid-column:1/-1;grid-row:2;justify-self:center;width:40px;height:40px;flex:0 0 40px;margin-top:4px}.top .brand{grid-column:1/-1;grid-row:3;min-width:0;gap:3px;text-align:center;justify-items:center}.top .brand h1{font-size:20px;line-height:1.15}.top .brand p{font-size:12px;line-height:1.35}.top .brand-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 10px;font-size:10px}.top .top-actions{grid-column:1/-1;grid-row:4;justify-self:end;margin:10px 0 0}}.app-version-meta{display:none}@media(max-width:650px){.top{grid-template-columns:36px 34px minmax(0,1fr) 72px;grid-template-rows:32px auto;align-items:center;gap:6px;padding:8px 10px;margin-bottom:12px}.top ha-menu-button{grid-column:1;grid-row:1;align-self:center;justify-self:center;width:32px;height:32px;--mdc-icon-size:20px}.top .top-actions{grid-column:3/-1;grid-row:1;justify-self:end;margin:0;gap:4px}.top .app-mark{grid-column:1;grid-row:2;justify-self:start;width:34px;height:34px;flex:0 0 34px;margin:0}.top .brand{grid-column:2/-1;grid-row:2;align-self:center;min-width:0;gap:2px;text-align:left;justify-items:start}.top .brand h1{font-size:17px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top .brand p{display:-webkit-box;min-width:0;max-width:100%;overflow:hidden;font-size:11px;line-height:1.2;-webkit-line-clamp:2;-webkit-box-orient:vertical}.top .brand-meta{display:none}.top .info-icon-button{width:32px;height:32px;min-width:32px;min-height:32px;flex:0 0 32px;font-size:17px}.app-version-meta{display:grid;gap:2px;margin:8px 0 0;text-align:center;font-size:10px;line-height:1.4}.range-filter-count{display:none}}@media(max-width:650px){.top{display:grid;box-sizing:border-box;grid-template-columns:38px minmax(0,1fr);grid-template-rows:38px auto;align-items:center;column-gap:12px;row-gap:10px;padding:12px 14px;margin:0 0 14px;min-width:0}.top ha-menu-button{grid-column:1;grid-row:1;justify-self:start;align-self:center;width:36px;height:36px;--mdc-icon-size:22px}.top .top-actions{grid-column:2;grid-row:1;justify-self:end;align-self:center;display:flex;gap:8px;margin:0;min-width:0}.top .data-management-button,.top .top-info-button,.top .info-icon-button{box-sizing:border-box;width:36px;height:36px;min-width:36px;min-height:36px;flex:0 0 36px;margin:0}.top .app-mark{grid-column:1;grid-row:2;justify-self:start;align-self:center;width:38px;height:38px;flex:0 0 38px;margin:0}.top .brand{grid-column:2;grid-row:2;align-self:center;justify-self:stretch;display:grid;min-width:0;max-width:100%;gap:4px;text-align:left;justify-items:start}.top .brand h1{margin:0;font-size:18px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top .brand p{display:-webkit-box;min-width:0;max-width:100%;margin:0;overflow:hidden;font-size:11px;line-height:1.3;-webkit-line-clamp:2;-webkit-box-orient:vertical}.top .brand-meta{display:none}.range-filter{display:grid;gap:0;margin:10px 0;padding:0;border:0;background:transparent}.range-filter-count{display:block;padding:8px 12px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:10px;background:var(--secondary-background-color,var(--steuertage-card-background,var(--card-background-color)));color:var(--primary-text-color);font-size:13px;font-weight:600;text-align:center}.range-filter-heading,.range-weekday-options,.range-filter>small{display:none}.app-version-meta{margin:8px 0 0}}" + headerStyles + calendarStyles;
+      this._styles.textContent = ":host{display:block;height:100vh;height:100dvh;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;color:var(--steuertage-text,var(--primary-text-color,#202124));background:var(--steuertage-page-background,var(--lovelace-background,var(--primary-background-color,#f5f6f8)));background-attachment:fixed;min-height:100vh;font-family:var(--paper-font-body1_-_font-family,Roboto,Noto,sans-serif)}.page{max-width:1050px;margin:auto;padding:24px}.top{display:flex;align-items:center;gap:14px;margin-bottom:18px;padding:12px 16px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:16px;background:var(--steuertage-card-background,var(--card-background-color));box-shadow:var(--ha-card-box-shadow,0 1px 3px rgba(0,0,0,.06))}.top .top-info-button{margin-left:auto;flex:0 0 36px}.app-mark{width:46px;height:46px;flex:0 0 46px;overflow:hidden;border-radius:12px}.app-mark img{width:100%;height:100%;object-fit:contain}.developer-credit a{color:inherit;text-decoration:none}.developer-credit a:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.brand-meta{display:flex;gap:6px;margin-top:5px;color:var(--steuertage-muted,var(--secondary-text-color));font-size:11px}.brand{display:grid;gap:2px}.top h1{font-size:24px;font-weight:500;margin:0}.brand p{margin:0;color:var(--secondary-text-color);font-size:14px}.tabs{display:flex;gap:8px;flex-wrap:wrap;padding:5px;margin:0 0 20px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background));box-shadow:var(--ha-card-box-shadow,0 1px 2px rgba(0,0,0,.05))}.tabs button,.actions button,.month-nav,.today-nav,.multi-select-toggle,.clear-selection{font:inherit;color:var(--primary-text-color);background:var(--ha-card-background,var(--card-background-color,Canvas));border:1px solid var(--divider-color);border-radius:8px;padding:9px 14px;cursor:pointer}.tabs button{border:0;background:transparent}.tabs button.active{color:var(--primary-color);border-color:var(--primary-color);background:var(--steuertage-card-background,var(--card-background-color));box-shadow:0 1px 4px rgba(0,0,0,.12);font-weight:650}.multi-select-toggle[aria-pressed='true']{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color);font-weight:600}.selection-mode-controls{display:flex;align-items:center;gap:8px;flex:none}.clear-selection{color:var(--secondary-text-color);background:transparent}.clear-selection[hidden]{display:none}.actions button.selected-type{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color);font-weight:600;box-shadow:0 0 0 2px var(--primary-color)}.export-check{padding:8px 12px;margin:0 0 14px}.export-check h3{font-size:15px;margin:0 0 4px}.export-check .validation.ok{color:var(--success-color,#2e7d32);font-size:13px;margin:0}.export-check.has-issues{border:1px solid var(--error-color);background:var(--ha-card-background,var(--card-background-color))}.export-check.has-issues h3{color:var(--error-color)}.preset-row{display:flex;flex-wrap:wrap;gap:8px;grid-column:1/-1}.actions button.selected-type{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color);font-weight:600;box-shadow:0 0 0 2px var(--primary-color)}.export-check{padding:8px 12px;margin:0 0 14px}.export-check h3{font-size:15px;margin:0 0 4px}.export-check .validation.ok{color:var(--success-color,#2e7d32);font-size:13px;margin:0}.preset-row{display:flex;flex-wrap:wrap;gap:8px;grid-column:1/-1}.view-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 20px}.view-header h2{font-size:26px;line-height:1.2;font-weight:650;margin:2px 0 7px;letter-spacing:-.02em}.view-header p{margin:0;color:var(--steuertage-muted,var(--secondary-text-color));font-size:14px;line-height:1.5}.eyebrow{display:block;color:var(--primary-color);font-size:11px;font-weight:700;letter-spacing:.09em;margin-bottom:4px}.header-badge{border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:999px;padding:7px 11px;color:var(--steuertage-muted,var(--secondary-text-color));font-size:12px;white-space:nowrap}.header-actions{display:flex;align-items:center;gap:8px}.info-icon-button,.dialog-close-button{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:50%;background:var(--steuertage-card-background,var(--card-background-color));color:var(--steuertage-text,var(--primary-text-color));font:inherit;font-size:20px;line-height:1;cursor:pointer}.info-icon-button:hover,.info-icon-button:focus-visible,.dialog-close-button:hover,.dialog-close-button:focus-visible{border-color:var(--primary-color);outline:2px solid var(--primary-color);outline-offset:2px}.config-info-dialog{width:min(620px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:86vh;margin:auto;padding:0;overflow:auto;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:18px;background:var(--steuertage-card-background,var(--card-background-color,#fff));color:var(--steuertage-text,var(--primary-text-color));box-shadow:0 18px 60px rgba(0,0,0,.3)}.config-info-dialog::backdrop{background:rgba(0,0,0,.46);backdrop-filter:blur(2px)}.config-info-dialog-content{padding:22px}.config-info-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}.config-info-header h3{margin:2px 0;font-size:20px}.config-info-dialog .explanation-card{margin:0;padding:0;border:0;background:transparent;box-shadow:none}.config-info-links{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--steuertage-divider,var(--divider-color))}.config-info-links a{display:inline-flex;align-items:center;padding:9px 12px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:10px;color:var(--primary-color);text-decoration:none;font-weight:600}.config-info-links a:hover{border-color:var(--primary-color);background:var(--secondary-background-color,var(--steuertage-card-background))}@media(max-width:600px){.config-info-dialog-content{padding:18px}.config-info-links a{width:100%;justify-content:center}}.config-card{padding:26px;border-radius:18px;background:var(--steuertage-card-background,var(--card-background-color,#fff));box-shadow:var(--ha-card-box-shadow,0 1px 3px rgba(0,0,0,.08))}.config-title{align-items:flex-start}.config-title h3{font-size:18px;font-weight:650}.settings-link{display:inline-flex;align-items:center;gap:6px;border-radius:9px;padding:8px 12px;background:var(--secondary-background-color,var(--primary-background-color));text-decoration:none;font-weight:600}.config-card dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:26px}.config-card dt,.config-card dd,.config-card h3{-webkit-user-select:text;user-select:text}.config-card dl>div{display:flex;flex-direction:column;justify-content:center;gap:11px;min-height:88px;padding:18px 20px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:11px;background:var(--secondary-background-color,var(--steuertage-card-background))}.config-card dt{font-size:12px;line-height:1.4;margin:0;color:var(--steuertage-muted,var(--secondary-text-color))}.config-card dd{font-size:14px;line-height:1.5;font-weight:550;margin:0;overflow-wrap:anywhere}.validation.ok{border-inline-start:3px solid var(--success-color,#43a047)}.validation.warning{border-inline-start:3px solid var(--error-color,#db4437)}.explanation-card{margin-top:20px;padding:20px;border-radius:16px}.export-period{padding:18px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:16px;background:var(--steuertage-card-background,var(--card-background-color,#fff))}.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.section-heading h3{margin:0;font-size:17px}.person-picker{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--primary-color);border-radius:12px;background:var(--secondary-background-color,var(--steuertage-card-background));font-weight:650}.person-picker span{font-size:13px;color:var(--steuertage-muted,var(--secondary-text-color))}.person-picker select{min-width:150px;padding:8px 10px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:8px;background:var(--steuertage-card-background,var(--card-background-color));color:var(--steuertage-text,var(--primary-text-color));font:inherit;font-weight:650}.backup-card{margin-top:18px}.backup-card [data-backup]{font-weight:700}.export-controls{margin:12px 0 0}.preset-row{width:100%;padding:4px 0 6px}.preset-row .export-button{border-radius:999px;background:var(--secondary-background-color,var(--steuertage-card-background));font-weight:600}.export-button{transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}.export-button:hover:not(:disabled){transform:translateY(-1px);border-color:var(--primary-color);box-shadow:0 2px 8px rgba(0,0,0,.12)}.export-stats .stat{border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;padding:16px;background:var(--steuertage-card-background,var(--card-background-color,#fff))}.export-stats .stat strong{font-size:24px}.export-check{border-radius:12px}.disclaimer{border-radius:0 10px 10px 0}.app-disclaimer{margin:24px 2px 8px;padding:12px 2px 0;border-top:1px solid var(--steuertage-divider,var(--divider-color));color:var(--steuertage-text,var(--primary-text-color));font-size:11px;line-height:1.55;text-align:center}@media(max-width:700px){.page{padding:14px}.view-header{gap:8px}.view-header h2{font-size:22px}.header-badge{font-size:11px}.config-card dl{grid-template-columns:1fr}.config-title{flex-direction:column}.export-period{padding:14px}ha-card{padding:16px}}ha-card{display:block;background:var(--steuertage-card-background,var(--ha-card-background,var(--card-background-color,#fff)));color:var(--steuertage-text,var(--primary-text-color,#202124));border:1px solid var(--steuertage-divider,var(--divider-color,#dadce0));border-radius:var(--ha-card-border-radius,16px);padding:24px;box-shadow:var(--ha-card-box-shadow,0 2px 8px rgba(0,0,0,.12))}.calendar-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px}.calendar-head h2{flex:1;text-align:center;font-size:20px;font-weight:500;margin:0;text-transform:capitalize}.month-nav-group{display:flex;gap:6px;flex:0 0 auto}.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.weekday{text-align:center;color:var(--secondary-text-color);font-size:13px;padding:8px 0}.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px;color:var(--secondary-text-color);font-size:13px}.legend span{display:inline-flex;align-items:center;gap:6px}.legend-dot{width:11px;height:11px;border-radius:50%;display:inline-block}.office-dot{background:var(--info-color,#039be5)}.home-dot{background:var(--success-color,#43a047)}.vacation-dot{background:var(--warning-color,#fbc02d)}.sick-dot{background:var(--error-color,#db4437)}.tracking-dot,.automatic-dot{background:#8b5cf6}.no-work-dot{background:var(--divider-color,#9e9e9e)}.weekday.weekend-label{color:var(--secondary-text-color);font-weight:600}.day{position:relative;min-height:44px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit;cursor:pointer;-webkit-user-select:none;user-select:none}.day.weekend{background:color-mix(in srgb,var(--card-background-color,Canvas) 95%,var(--primary-text-color,#202124) 5%);border-bottom:2px solid var(--divider-color)}.day.outside{opacity:.45}.day.today{box-shadow:inset 0 0 0 2px var(--secondary-text-color,#6b7280)}.day.mixed .mixed-mark{position:absolute;right:4px;bottom:3px;font-size:8px;line-height:1;font-weight:700;color:var(--secondary-text-color);opacity:.8}.mixed-legend-mark{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:4px;border:1px solid var(--divider-color);font-size:9px;font-style:normal;font-weight:700;color:var(--secondary-text-color)}.mixed-tag{display:inline-block;margin-left:5px;padding:2px 6px;border:1px solid var(--divider-color);border-radius:999px;font-size:10px;font-weight:600;color:var(--secondary-text-color);white-space:nowrap}.day.manual .manual-mark{position:absolute;top:3px;right:4px;font-size:9px;line-height:1;color:var(--secondary-text-color);opacity:.78;pointer-events:none}.manual-legend-mark{display:inline-flex;align-items:center;justify-content:center;font-size:11px;line-height:1;color:var(--secondary-text-color);opacity:.8;font-style:normal}.person-tabs{display:flex;gap:8px;margin:0 0 16px;border-bottom:1px solid var(--divider-color)}.person-tab{font:inherit;color:var(--secondary-text-color);background:transparent;border:0;border-bottom:2px solid transparent;padding:10px 14px;cursor:pointer}.person-tab[aria-pressed='true']{color:var(--primary-color);border-bottom-color:var(--primary-color);font-weight:600}.config-card,.info-card{border:1px solid var(--divider-color);border-radius:10px;padding:16px;margin:14px 0}.config-title{display:flex;justify-content:space-between;align-items:center;gap:12px}.config-title h3,.info-card h3{margin:0 0 8px;font-size:17px;font-weight:500}.config-title a{color:var(--primary-color)}dl{margin:10px 0 0}.config-card dl>div{display:grid;grid-template-columns:minmax(130px,1fr) 2fr;gap:10px;padding:7px 0;border-top:1px solid var(--divider-color)}dt{color:var(--secondary-text-color)}dd{margin:0;overflow-wrap:anywhere}.info-card li{margin:8px 0}.export-controls{display:flex;align-items:end;flex-wrap:wrap;gap:10px;margin:16px 0}.export-controls label{display:grid;gap:5px;color:var(--secondary-text-color)}.export-controls input,.export-controls select,.export-button{font:inherit;color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:7px;padding:9px 12px}.export-button{cursor:pointer}.export-button:disabled{opacity:.5;cursor:wait}.export-stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:16px}.muted{color:var(--secondary-text-color);font-size:13px}.disclaimer{margin-top:16px;padding:12px 14px;border-inline-start:3px solid var(--warning-color,var(--primary-color));background:var(--secondary-background-color,var(--card-background-color,Canvas));color:var(--secondary-text-color);font-size:13px;line-height:1.5}.date-range{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}.date-range label{display:grid;gap:5px;color:var(--secondary-text-color)}.date-range input{font:inherit;color:var(--primary-text-color);background:var(--ha-card-background,var(--card-background-color,Canvas));border:1px solid var(--divider-color);border-radius:7px;padding:8px 10px}.date-range input:focus,.date-range input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px;border-color:var(--primary-color)}.calendar-help{margin:8px 0 16px;text-align:center;font-size:12px}.selection-instructions{margin:8px 0 12px}.validation{padding:10px 12px;border-radius:8px;margin-top:12px}.validation.ok{color:var(--success-color,var(--primary-text-color));background:var(--secondary-background-color,var(--card-background-color,Canvas))}.validation.warning{color:var(--error-color,var(--primary-text-color));background:var(--secondary-background-color,var(--card-background-color,Canvas))}.validation ul{margin-bottom:0}.checklist{padding-left:20px}.checklist li{margin:6px 0}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--divider-color)}th{color:var(--secondary-text-color);font-weight:500}.needs-review{background:var(--secondary-background-color)}.tracking-row{background:var(--secondary-background-color)}.manual-tag{display:inline-block;border-radius:10px;background:var(--secondary-background-color);padding:2px 7px;font-size:12px;color:var(--secondary-text-color)}.text-button{border:0;background:transparent;color:var(--primary-color);font:inherit;cursor:pointer;padding:0}.change-history{margin-top:12px;color:var(--secondary-text-color)}.change-history ul{padding-left:20px}.change-history time{font-variant-numeric:tabular-nums}.day.type-office,.day.type-office_and_home_office{background:var(--info-color,#039be5);color:var(--text-primary-color,#fff)}.day.type-home_office{background:var(--success-color,#43a047);color:var(--text-primary-color,#fff)}.day.type-business_trip{background:#943875;color:#fff}.business-trip-dot{background:#943875}.day.type-vacation{background:var(--warning-color,#fbc02d);color:var(--primary-text-color)}.day.type-sick_leave,.day.type-needs_review{background:var(--error-color,#db4437);color:var(--text-primary-color,#fff)}.stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:0 0 16px}.stat{display:flex;flex-direction:column;gap:4px;background:var(--secondary-background-color,var(--card-background-color));border-radius:8px;padding:10px 12px}.stat span{color:var(--secondary-text-color);font-size:12px}.stat strong{font-size:20px;font-weight:500}.selection{border-top:1px solid var(--divider-color);margin-top:20px;padding-top:12px}.selection h3{font-size:17px;margin:0 0 6px}.selection p{color:var(--secondary-text-color)}.actions{display:flex;flex-wrap:wrap;gap:8px}.actions button{padding:8px 10px}.message:empty{display:none}.message{min-height:1em}ha-card>h2{font-weight:500}.page li{margin:8px 0}@media(max-width:600px){.calendar-head{gap:8px}.calendar-head h2{flex-basis:100%;order:-1}.selection-mode-controls{width:100%}.selection-mode-controls .multi-select-toggle{flex:1}.today-nav{flex:0 0 auto}.page{padding:12px}.day{min-height:38px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.export-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.config-title{align-items:flex-start;flex-direction:column}.grid{gap:3px}.tabs{overflow-x:auto}.tabs button{white-space:nowrap;padding:8px 10px}}.day.type-tracking{background:#8b5cf6;color:#fff}@keyframes steuertage-tracking-pulse{0%{box-shadow:0 0 0 0 rgba(139,92,246,.55)}70%{box-shadow:0 0 0 7px rgba(139,92,246,0)}100%{box-shadow:0 0 0 0 rgba(139,92,246,0)}}@media(max-width:650px){.page{padding:14px}.top{min-width:0}.brand{min-width:0}.brand-meta{flex-wrap:wrap}.config-card{padding:18px}.config-card dl{grid-template-columns:1fr;gap:10px}.config-card dl>div{min-height:0;padding:14px 16px}.legend-shortcuts small{width:100%;margin-left:0}}.calendar-legend{display:grid;gap:14px;margin:18px 8px 20px;padding:16px 18px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background))}.legend-status{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px}.legend-status>span{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--steuertage-muted,var(--secondary-text-color))}.legend-status>strong{font-size:12px;color:var(--steuertage-text,var(--primary-text-color))}.legend-status small{margin-left:auto;color:var(--steuertage-muted,var(--secondary-text-color));font-size:11px}.legend-status kbd{min-width:19px;padding:2px 6px;text-align:center;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:5px;background:var(--steuertage-card-background,var(--card-background-color));font:inherit;font-size:11px;font-weight:600}.legend-pulse{font-weight:600}.legend-pulse .tracking-dot{animation:steuertage-tracking-pulse 1.8s ease-out infinite}.legend-status>.legend-divider{display:block;flex:0 0 1px;width:1px;height:16px;background:var(--steuertage-divider,var(--divider-color));opacity:.8}/* Compact, consistent configuration rows */.config-card dl{align-items:start;grid-auto-rows:minmax(0,auto);gap:12px;margin-top:20px}.config-card dl>div{display:grid;grid-template-columns:minmax(125px,.9fr) minmax(0,1.5fr);align-items:start;justify-content:initial;gap:8px 14px;min-height:0;padding:14px 16px}.config-card dt{line-height:1.35}.config-card dd{line-height:1.4}@media(max-width:700px){.config-card dl{grid-template-columns:1fr;gap:9px}.config-card dl>div{grid-template-columns:minmax(115px,.8fr) minmax(0,1.2fr);padding:12px 14px}}@media(prefers-reduced-motion:reduce){.legend-pulse .tracking-dot{animation:none}}@media(max-width:650px){.export-period .section-heading{flex-direction:column;align-items:stretch}.person-picker{width:100%;max-width:100%;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr);gap:6px}.person-picker select{width:100%;min-width:0;max-width:100%;box-sizing:border-box}}.backup-feedback{display:flex;align-items:flex-start;gap:12px;margin-top:16px;padding:16px;border:1px solid var(--divider-color);border-radius:14px;background:var(--secondary-background-color,var(--card-background-color))}.backup-feedback-icon{display:grid;place-items:center;width:28px;height:28px;flex:0 0 28px;border-radius:50%;font-weight:700;background:var(--info-color,#1976d2);color:var(--text-primary-color,#fff)}.backup-feedback.success{border-color:var(--success-color,#2e7d32)}.backup-feedback.success .backup-feedback-icon{background:var(--success-color,#2e7d32)}.backup-feedback.error{border-color:var(--error-color,#c62828)}.backup-feedback.error .backup-feedback-icon{background:var(--error-color,#c62828)}.backup-feedback strong{display:block;margin:2px 0 4px}.backup-feedback p{margin:0 0 10px;color:var(--secondary-text-color);line-height:1.5}.backup-actions{display:flex;flex-wrap:wrap;gap:10px}.restore-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.export-button.primary{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color);font-weight:600}.dialog-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.48)}.restore-dialog{width:min(560px,100%);max-height:min(90vh,760px);overflow:auto;padding:24px;border:1px solid var(--divider-color);border-radius:18px;background:var(--card-background-color,var(--primary-background-color,Canvas));color:var(--primary-text-color);box-shadow:0 18px 60px rgba(0,0,0,.28)}.restore-dialog h3{font-size:22px;margin:4px 0 12px}.restore-summary{padding:12px 14px;border-radius:12px;background:var(--secondary-background-color,var(--primary-background-color));line-height:1.55}.restore-options{display:grid;gap:10px;margin:18px 0 0;padding:14px;border:1px solid var(--divider-color);border-radius:14px}.restore-options legend{padding:0 6px;font-weight:600}.restore-option{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--divider-color);border-radius:12px;cursor:pointer}.restore-option:has(input:checked){border-color:var(--primary-color);box-shadow:0 0 0 1px var(--primary-color)}.restore-option input{margin:3px 0 0;accent-color:var(--primary-color)}.restore-option span{display:grid;gap:4px}.restore-option small{color:var(--secondary-text-color);line-height:1.45}.restore-progress{color:var(--primary-color);font-weight:600}.open-review-card{display:grid;gap:10px;margin:16px 0;padding:14px 16px;border:1px solid var(--divider-color);border-radius:14px;background:var(--secondary-background-color,var(--card-background-color))}.open-review-heading{display:flex;align-items:center;justify-content:space-between}.open-review-heading>div{display:grid;gap:3px}.open-review-heading strong{font-size:15px}.open-review-count{display:grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:16px;background:var(--warning-color,#ed9b00);color:var(--text-primary-color,#fff);font-weight:700}.open-review-days{display:flex;flex-wrap:wrap;gap:8px}.review-day-chip{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--divider-color);border-radius:10px;color:var(--primary-text-color);background:var(--card-background-color);font:inherit;text-align:left;cursor:pointer}.review-day-chip small{color:var(--secondary-text-color)}.review-day-chip.needs-review{border-color:var(--error-color,#c62828)}.review-day-chip.tracking{border-color:var(--primary-color)}.review-more{align-self:center;color:var(--secondary-text-color);font-size:13px}.open-review-card.all-clear{display:flex;align-items:center;gap:10px;color:var(--success-color,#2e7d32)}.open-review-card.all-clear strong,.open-review-card.all-clear small{display:block}.open-review-card.all-clear small{margin-top:3px;color:var(--secondary-text-color)}.open-review-check{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--success-color,#2e7d32);color:var(--text-primary-color,#fff);font-weight:700}@media(max-width:600px){.restore-dialog{padding:18px}.restore-dialog-actions{flex-direction:column-reverse}.restore-dialog-actions button{width:100%}}.app-disclaimer{display:grid;justify-items:center;gap:5px;max-width:820px;margin:30px auto 12px;padding:16px 14px 4px;border-top:1px solid var(--steuertage-divider,var(--divider-color));color:var(--steuertage-text,var(--primary-text-color));font-size:11px;line-height:1.55;text-align:center}.app-disclaimer p{margin:0}.disclaimer-label{color:var(--steuertage-text,var(--primary-text-color));font-size:11px;font-weight:700;letter-spacing:.1em}.disclaimer-caveat{font-weight:600}.calendar-head{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;justify-content:initial;flex-wrap:initial}.selection-mode-controls{grid-column:1;justify-self:start;min-width:0}.calendar-head h2{grid-column:2;min-width:max-content;flex:none}.calendar-navigation{grid-column:3;justify-self:end;display:flex;align-items:center;gap:6px}.data-disclosure{margin:12px 0;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background,var(--card-background-color)))}.data-disclosure>summary{display:grid;grid-template-columns:minmax(0,1fr) clamp(100px,30vw,140px) 16px;align-items:center;gap:12px;padding:15px 18px;cursor:pointer;font-weight:600;list-style:none}.data-disclosure>summary::-webkit-details-marker{display:none}.data-disclosure>summary:after{content:'⌄';justify-self:end;color:var(--secondary-text-color);font-size:18px;transition:transform .16s ease}.data-disclosure[open]>summary:after{transform:rotate(180deg)}.data-disclosure>summary small{margin:0;color:var(--secondary-text-color);font-size:12px;font-weight:500;text-align:center}.data-disclosure[open]>summary{border-bottom:1px solid var(--steuertage-divider,var(--divider-color))}.disclosure-content{padding:4px 16px 16px}.disclosure-content>p:first-child{margin-top:12px}.change-log-list{display:grid;gap:8px;margin:12px 0 0;padding:0;list-style:none}.change-log-list li{display:flex;align-items:center;padding:11px 12px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:10px}.change-log-list li span{display:grid;gap:4px}.change-log-list small{color:var(--secondary-text-color)}@media(max-width:600px){.calendar-head{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:6px}.selection-mode-controls{width:auto}.calendar-head h2{grid-column:2;flex-basis:auto;font-size:16px}.calendar-navigation{gap:4px}.app-disclaimer{margin-top:24px;padding-inline:6px}.data-disclosure>summary{padding:13px 14px;grid-template-columns:minmax(0,1fr) clamp(94px,30vw,120px) 16px}.disclosure-content{padding:4px 10px 12px}}.range-filter{display:grid;gap:10px;margin:14px 0;padding:14px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background,var(--card-background-color)))}.range-filter-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.range-filter-heading>div:first-child{display:grid;gap:3px}.range-filter-heading small,.range-filter>small{color:var(--secondary-text-color);font-size:12px}.range-filter-presets,.range-weekday-options{display:flex;flex-wrap:wrap;gap:6px}.range-filter button{font:inherit;color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:999px;background:var(--card-background-color);padding:6px 10px;cursor:pointer}.range-weekday.active{border-color:var(--primary-color);background:var(--primary-color);color:var(--text-primary-color,#fff)}@media(max-width:600px){.range-filter-heading{align-items:flex-start;flex-direction:column}.range-filter-presets{width:100%}.range-filter-presets button{flex:1}.range-weekday-options{justify-content:space-between}}.top .data-management-button{margin-left:auto;flex:0 0 36px}.top .top-info-button{margin-left:0;flex:0 0 36px}.data-management-dialog{width:min(680px,calc(100vw - 32px));max-width:none;max-height:min(90dvh,900px);margin:auto;padding:0;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:20px;background:var(--steuertage-card-background,var(--card-background-color));color:var(--steuertage-text,var(--primary-text-color));box-shadow:var(--ha-card-box-shadow,0 16px 48px rgba(0,0,0,.28));overflow:auto}.data-management-dialog::backdrop{background:rgba(0,0,0,.48);backdrop-filter:blur(2px)}.data-management-content{padding:24px}.data-management-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.data-management-header h2{margin:4px 0;font-size:22px}.data-management-header p{margin:4px 0;color:var(--secondary-text-color);line-height:1.45}.data-management-header .dialog-close-button{flex:0 0 auto}.data-management-dialog .backup-card,.restore-review-card{display:grid;gap:12px;padding:18px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--card-background-color))}.data-management-dialog .backup-card p,.restore-review-card p{margin:0;line-height:1.55}.data-management-dialog .backup-actions{margin-top:4px}.backup-launch{display:flex;justify-content:flex-end;margin:20px 0}.data-management-dialog .restore-options{margin:8px 0}.data-management-dialog .restore-dialog-actions{margin-top:16px}@media(max-width:600px){.data-management-content{padding:18px}.data-management-header h2{font-size:19px}.data-management-dialog .backup-actions{display:grid}.data-management-dialog .backup-actions button{width:100%}.data-management-dialog .restore-dialog-actions{flex-direction:column-reverse}.data-management-dialog .restore-dialog-actions button{width:100%}}.type-symbol svg{display:block;width:17px;height:17px;fill:currentColor}@media(max-width:650px){.top{display:grid;grid-template-columns:36px 40px minmax(0,1fr);grid-template-rows:auto auto;align-items:center;gap:8px 10px;padding:12px}.top ha-menu-button{grid-column:1;grid-row:1}.top .app-mark{grid-column:2;grid-row:1;width:40px;height:40px;flex:0 0 40px}.top .brand{grid-column:3;grid-row:1;min-width:0;gap:3px}.top .brand h1{font-size:20px;line-height:1.15}.top .brand p{font-size:12px;line-height:1.35}.top .brand-meta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:10px}.top .data-management-button{grid-column:2;grid-row:2;justify-self:end;margin:0;flex:0 0 36px}.top .top-info-button{grid-column:3;grid-row:2;justify-self:end;margin:0;flex:0 0 36px}}.config-card{box-shadow:none;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:14px;background:var(--secondary-background-color,var(--steuertage-card-background,var(--card-background-color)))}.config-card dl>div{box-shadow:none}.top-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex:0 0 auto}.top .data-management-button,.top .top-info-button{margin:0;flex:0 0 36px}.config-info-dialog .dialog-close-button{box-sizing:border-box;flex:0 0 36px;min-width:36px;min-height:36px;aspect-ratio:1;border-radius:50%}@media(max-width:650px){.top .top-actions{grid-column:3;grid-row:2;justify-self:end;margin:0}.top .data-management-button,.top .top-info-button{margin:0;flex:0 0 36px}}@media(max-width:650px){:host{height:auto;min-height:100dvh;overflow-y:visible;overscroll-behavior:auto}.page{box-sizing:border-box;min-height:100dvh;padding-bottom:max(10px,env(safe-area-inset-bottom,0px))}.range-filter{display:none}.app-disclaimer{margin-bottom:0}}@media(max-width:650px){.top{grid-template-columns:36px minmax(0,1fr);grid-template-rows:auto auto auto auto;align-items:start}.top ha-menu-button{grid-column:1;grid-row:1;align-self:start}.top .app-mark{grid-column:1/-1;grid-row:2;justify-self:center;width:40px;height:40px;flex:0 0 40px;margin-top:4px}.top .brand{grid-column:1/-1;grid-row:3;min-width:0;gap:3px;text-align:center;justify-items:center}.top .brand h1{font-size:20px;line-height:1.15}.top .brand p{font-size:12px;line-height:1.35}.top .brand-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 10px;font-size:10px}.top .top-actions{grid-column:1/-1;grid-row:4;justify-self:end;margin:10px 0 0}}.app-version-meta{display:none}@media(max-width:650px){.top{grid-template-columns:36px 34px minmax(0,1fr) 72px;grid-template-rows:32px auto;align-items:center;gap:6px;padding:8px 10px;margin-bottom:12px}.top ha-menu-button{grid-column:1;grid-row:1;align-self:center;justify-self:center;width:32px;height:32px;--mdc-icon-size:20px}.top .top-actions{grid-column:3/-1;grid-row:1;justify-self:end;margin:0;gap:4px}.top .app-mark{grid-column:1;grid-row:2;justify-self:start;width:34px;height:34px;flex:0 0 34px;margin:0}.top .brand{grid-column:2/-1;grid-row:2;align-self:center;min-width:0;gap:2px;text-align:left;justify-items:start}.top .brand h1{font-size:17px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top .brand p{display:-webkit-box;min-width:0;max-width:100%;overflow:hidden;font-size:11px;line-height:1.2;-webkit-line-clamp:2;-webkit-box-orient:vertical}.top .brand-meta{display:none}.top .info-icon-button{width:32px;height:32px;min-width:32px;min-height:32px;flex:0 0 32px;font-size:17px}.app-version-meta{display:grid;gap:2px;margin:8px 0 0;text-align:center;font-size:10px;line-height:1.4}.range-filter-count{display:none}}@media(max-width:650px){.top{display:grid;box-sizing:border-box;grid-template-columns:38px minmax(0,1fr);grid-template-rows:38px auto;align-items:center;column-gap:12px;row-gap:10px;padding:12px 14px;margin:0 0 14px;min-width:0}.top ha-menu-button{grid-column:1;grid-row:1;justify-self:start;align-self:center;width:36px;height:36px;--mdc-icon-size:22px}.top .top-actions{grid-column:2;grid-row:1;justify-self:end;align-self:center;display:flex;gap:8px;margin:0;min-width:0}.top .data-management-button,.top .top-info-button,.top .info-icon-button{box-sizing:border-box;width:36px;height:36px;min-width:36px;min-height:36px;flex:0 0 36px;margin:0}.top .app-mark{grid-column:1;grid-row:2;justify-self:start;align-self:center;width:38px;height:38px;flex:0 0 38px;margin:0}.top .brand{grid-column:2;grid-row:2;align-self:center;justify-self:stretch;display:grid;min-width:0;max-width:100%;gap:4px;text-align:left;justify-items:start}.top .brand h1{margin:0;font-size:18px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top .brand p{display:-webkit-box;min-width:0;max-width:100%;margin:0;overflow:hidden;font-size:11px;line-height:1.3;-webkit-line-clamp:2;-webkit-box-orient:vertical}.top .brand-meta{display:none}.range-filter{display:grid;gap:0;margin:10px 0;padding:0;border:0;background:transparent}.range-filter-count{display:block;padding:8px 12px;border:1px solid var(--steuertage-divider,var(--divider-color));border-radius:10px;background:var(--secondary-background-color,var(--steuertage-card-background,var(--card-background-color)));color:var(--primary-text-color);font-size:13px;font-weight:600;text-align:center}.range-filter-heading,.range-weekday-options,.range-filter>small{display:none}.app-version-meta{margin:8px 0 0}}" + headerStyles + calendarStyles;
     }
-    this._updateView("<div class='page'><div class='top'><ha-menu-button></ha-menu-button><div class='app-mark'><img src='/steuertage_brand/icon.png?v=" + encodeURIComponent(this._panel?.config?.version || "") + "' alt='' loading='lazy'></div><div class='brand'><h1>Steuertage</h1><p>Arbeitsstätte- und Homeoffice-Tage für die Steuererklärung erfassen.</p><div class='brand-meta'><span>Version " + this._escape(this._panel?.config?.version || "–") + "</span><span class='developer-credit'><span aria-hidden='true'>•</span> Entwickelt von <a href='https://github.com/mongrelX15' target='_blank' rel='noopener noreferrer'>mongrelX15</a></span></div></div><div class='top-actions'><button type='button' class='top-action' data-action='config-info' aria-label='Funktionsweise anzeigen' title='Funktionsweise anzeigen'><ha-icon icon='mdi:information-outline' aria-hidden='true'></ha-icon></button></div></div><div class='tabs'><button data-tab='calendar' class='" + (tab === "calendar" ? "active" : "") + "'>Kalender</button><button data-tab='config' class='" + (tab === "config" ? "active" : "") + "'>Konfiguration</button><button data-tab='export' class='" + (tab === "export" ? "active" : "") + "'>Daten &amp; Export</button></div>" + content + "<footer class='app-disclaimer'><span class='disclaimer-label'>HINWEIS!</span><p>" + this._escape("Steuertage unterstützt die automatische Erfassung relevanter Daten auf Grundlage der in Home Assistant vorhandenen Erkennung.") + "</p><p>" + this._escape("Für Richtigkeit und Vollständigkeit Ihrer Steuererklärung tragen Sie die volle Verantwortung.") + "</p><span class='disclaimer-caveat'>Alle Angaben ohne Gewähr.</span><div class='app-version-meta'><span>Version " + this._escape(this._panel?.config?.version || "–") + "</span><span class='developer-credit'><span aria-hidden='true'>•</span> Entwickelt von <a href='https://github.com/mongrelX15' target='_blank' rel='noopener noreferrer'>mongrelX15</a></span></div></footer></div>");
+    this._updateView("<div class='page'><div class='top'><ha-menu-button></ha-menu-button><div class='app-mark'><img src='/steuertage_brand/icon.png?v=" + encodeURIComponent(this._panel?.config?.version || "") + "' alt='' loading='lazy'></div><div class='brand'><h1>Steuertage</h1><p>Arbeitsstätte- und Homeoffice-Tage für die Steuererklärung erfassen.</p><div class='brand-meta'><span>Version " + this._escape(this._panel?.config?.version || "–") + "</span><span class='developer-credit'><span aria-hidden='true'>•</span> Entwickelt von <a href='https://github.com/mongrelX15' target='_blank' rel='noopener noreferrer'>mongrelX15</a></span></div></div><div class='top-actions'>" + buildBadge + "<button type='button' class='top-action' data-action='config-info' aria-label='Funktionsweise anzeigen' title='Funktionsweise anzeigen'><ha-icon icon='mdi:information-outline' aria-hidden='true'></ha-icon></button></div></div><div class='tabs'><button data-tab='calendar' class='" + (tab === "calendar" ? "active" : "") + "'>Kalender</button><button data-tab='config' class='" + (tab === "config" ? "active" : "") + "'>Konfiguration</button><button data-tab='export' class='" + (tab === "export" ? "active" : "") + "'>Daten &amp; Export</button></div>" + content + "<footer class='app-disclaimer'><span class='disclaimer-label'>HINWEIS!</span><p>" + this._escape("Steuertage unterstützt die automatische Erfassung relevanter Daten auf Grundlage der in Home Assistant vorhandenen Erkennung.") + "</p><p>" + this._escape("Für Richtigkeit und Vollständigkeit Ihrer Steuererklärung tragen Sie die volle Verantwortung.") + "</p><span class='disclaimer-caveat'>Alle Angaben ohne Gewähr.</span><div class='app-version-meta'><span>Version " + this._escape(this._panel?.config?.version || "–") + "</span><span class='developer-credit'><span aria-hidden='true'>•</span> Entwickelt von <a href='https://github.com/mongrelX15' target='_blank' rel='noopener noreferrer'>mongrelX15</a></span></div></footer></div>");
     for (const { element, top } of scrollPositions) {
       if (element.scrollTop !== top) element.scrollTop = top;
     }
@@ -1538,6 +1999,10 @@ class SteuertagePanel extends HTMLElement {
       const editor = this.shadowRoot.querySelector(".selection-card");
       const scroller = scrollPositions[0].element;
       if (editor) scroller.scrollTop += editor.getBoundingClientRect().top - editorTop;
+    }
+    if (exportPeriod?.isConnected && exportPeriodRect &&
+        exportPeriodRect.bottom > 0 && exportPeriodRect.top < window.innerHeight) {
+      scrollPositions[0].element.scrollTop += exportPeriod.getBoundingClientRect().top - exportPeriodRect.top;
     }
     const menu = this.shadowRoot.querySelector("ha-menu-button");
     if (menu) menu.hass = this._hass;
@@ -1567,6 +2032,7 @@ class SteuertagePanel extends HTMLElement {
     this._cancelCalendarDrag?.();
     let dragMoved = false;
     const mobileCalendar = window.matchMedia("(max-width: 650px)");
+    const coarsePointer = window.matchMedia("(pointer: coarse)");
     const dayButtons = [...this.shadowRoot.querySelectorAll("[data-date]")];
     dayButtons.forEach((button) => {
       button.addEventListener("pointerdown", (event) => {
@@ -1617,7 +2083,11 @@ class SteuertagePanel extends HTMLElement {
           const baseDates = this._multiSelectMode ? this._selectedDates : null;
           this._applyFilteredRange(anchor, date, { baseDates });
         } else {
-          this._selectDate(date, this._multiSelectMode || event.metaKey || event.ctrlKey);
+          const isMobileTap = mobileCalendar.matches || event.pointerType === "touch" ||
+            (!event.pointerType && coarsePointer.matches);
+          const tappedSelectedDay = isMobileTap &&
+            this._selectedDates.size === 1 && this._selectedDates.has(date);
+          this._selectDate(date, this._multiSelectMode || event.metaKey || event.ctrlKey || tappedSelectedDay);
         }
         this._render();
       }, { signal: this._viewListeners.signal });

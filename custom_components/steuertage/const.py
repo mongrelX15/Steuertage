@@ -20,3 +20,7 @@ DEFAULT_THRESHOLD_MINUTES: Final = 120
 CONF_MINIMUM_HOURS: Final = "minimum_hours"
 BETA_THRESHOLD_SECONDS: Final = 30 * 60
 DEFAULT_MINIMUM_HOURS: Final = 2.0
+
+CONF_SHOW_HOLIDAYS = "show_holidays"
+CONF_HOLIDAY_COUNTRY = "holiday_country"
+CONF_HOLIDAY_SUBDIVISION = "holiday_subdivision"

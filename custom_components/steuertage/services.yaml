@@ -34,6 +34,8 @@ set_day_override:
               value: office_and_home_office
             - label: Bitte prüfen
               value: needs_review
+            - label: Dienstreise
+              value: business_trip
             - label: Urlaub
               value: vacation
             - label: Krankheit

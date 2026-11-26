@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import DAY_TYPES, WorklogCoordinator
+from .holiday_dates import calendar_holidays, supported_countries
 
 PLATFORMS = ["sensor", "calendar", "binary_sensor"]
 PANEL_PATH = "steuertage"
@@ -151,6 +152,46 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, export_history)
         websocket_api.async_register_command(hass, restore_history)
         panel_data["backup_commands_registered"] = True
+
+    if not panel_data.get("holiday_command_registered"):
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "steuertage/holidays",
+                vol.Required("country"): vol.All(str, vol.Length(min=2, max=2)),
+                vol.Optional("subdivision", default=""): vol.All(str, vol.Length(max=20)),
+                vol.Required("year"): vol.All(int, vol.Range(min=2, max=9998)),
+            }
+        )
+        @websocket_api.async_response
+        async def get_holidays(
+            _hass: HomeAssistant,
+            connection: websocket_api.ActiveConnection,
+            msg: dict[str, Any],
+        ) -> None:
+            """Read the public holiday dates for a calendar region."""
+            country, subdivision = msg["country"], msg["subdivision"]
+            subdivisions = await hass.async_add_executor_job(supported_countries)
+            if country not in subdivisions or (
+                subdivision and subdivision not in subdivisions[country]
+            ):
+                connection.send_error(
+                    msg["id"], websocket_api.ERR_INVALID_FORMAT, "Unbekannte Feiertagsregion."
+                )
+                return
+            try:
+                dates = await hass.async_add_executor_job(
+                    calendar_holidays, country, subdivision, msg["year"]
+                )
+            except (ValueError, NotImplementedError):
+                connection.send_error(
+                    msg["id"], websocket_api.ERR_INVALID_FORMAT,
+                    "Feiertage sind für diesen Zeitraum nicht verfügbar.",
+                )
+                return
+            connection.send_result(msg["id"], dates)
+
+        websocket_api.async_register_command(hass, get_holidays)
+        panel_data["holiday_command_registered"] = True
 
     # Refresh the panel registration on reload so Home Assistant uses the
     # current module URL after a HACS update.

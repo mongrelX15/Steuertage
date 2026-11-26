@@ -6,6 +6,8 @@
 
 **Steuertage** hilft dabei, Arbeitsstätte- und Homeoffice-Tage für die Steuererklärung in Home Assistant zu erfassen und auszuwerten. Die Integration erkennt Tage anhand deiner Zonen, optional deines Homeoffice-Signals und eines optionalen Arbeitskalenders. Im Seitenleisten-Panel kannst du Tage prüfen und manuell ändern, Auswertungen erstellen und deine Daten sichern.
 
+![Steuertage-Dashboard mit Kalender und Monatsübersicht](docs/images/Dashboard.jpg)
+
 > Steuertage unterstützt die Erfassung von Arbeitstagen. Für die Richtigkeit und Vollständigkeit der Steuererklärung bist du selbst verantwortlich. Alle Angaben ohne Gewähr.
 
 ## Was Steuertage kann
@@ -20,13 +22,14 @@
 
 ## Installation
 
-Solange Steuertage noch nicht im offiziellen HACS-Store gelistet ist, installierst du das Repository als benutzerdefiniertes HACS-Repository:
+Steuertage ist im offiziellen Marketplace (ehemals HACS) verfügbar.
 
-1. Öffne in Home Assistant **HACS → Integrationen** und wähle im Menü **Benutzerdefinierte Repositories**.
-2. Füge `mongrelX15/Steuertage` als Repository vom Typ **Integration** hinzu.
-3. Installiere **Steuertage** über HACS und starte Home Assistant neu.
-4. Öffne **Einstellungen → Geräte & Dienste → Integration hinzufügen**, suche nach **Steuertage** und folge dem Einrichtungsdialog.
-5. Öffne anschließend **Steuertage** über die Seitenleiste.
+1. Öffne den **Marketplace** in Home Assistant und suche nach **Steuertage**.
+2. Lade die Integration herunter und starte Home Assistant neu.
+3. Öffne **Einstellungen → Geräte & Dienste → Integration hinzufügen**, suche nach **Steuertage** und folge dem Einrichtungsdialog.
+4. Öffne anschließend **Steuertage** über die Seitenleiste.
+
+Falls Steuertage nicht in der Marketplace-Suche erscheint, kannst du alternativ `mongrelX15/Steuertage` über **Benutzerdefinierte Repositories** als Repository vom Typ **Integration** hinzufügen.
 
 Die stabile Version findest du unter [GitHub Releases](https://github.com/mongrelX15/Steuertage/releases/latest). Vorabversionen stehen auf der [Übersicht aller Releases](https://github.com/mongrelX15/Steuertage/releases). Für eine manuelle Installation kopiere `custom_components/steuertage` nach `<config>/custom_components/steuertage` und starte Home Assistant neu.
 
@@ -44,13 +47,19 @@ Pro Person wird eine eigene Steuertage-Konfiguration angelegt. Für die Erkennun
 
 Ohne Arbeitskalender zählt die erkannte Anwesenheit in der Arbeitszone. Ist ein Arbeitskalender ausgewählt, zählt die Arbeitszone nur während eines passenden laufenden Termins. Ein Homeoffice-Gerät, das nach der Arbeit ausgeschaltet oder nicht erreichbar ist, gilt nicht als Homeoffice-Signal.
 
+![Konfiguration der Steuertage-Integration](docs/images/Konfiguration.PNG)
+
 ## Kalender und Auswertung
 
 Das Seitenleisten-Panel enthält die Bereiche **Kalender**, **Konfiguration** und **Daten & Export**. Die Oberfläche passt sich an das aktive Home-Assistant-Theme und den Hell-/Dunkelmodus an.
 
 Im Kalender siehst du Tagesstatus, Monatsstatistik, Wochenenden und Hinweise auf manuelle Änderungen. Am Desktop lassen sich mehrere Tage über Ziehen, Umschalt-Klick oder ⌘-Klick (Mac) beziehungsweise Strg-Klick (Windows/Linux) auswählen. Auf Mobilgeräten kannst du die Mehrfachauswahl aktivieren und einzelne Tage antippen. Für Ziehen und Umschalt-Klick kannst du die einzubeziehenden Wochentage pro Person festlegen, etwa „Wochenende auslassen“ oder ein individuelles Vier-Tage-Muster. Die Einstellung dient nur als Markierhilfe; einzelne Klicks und Feiertage bleiben auswählbar. Arbeitsstätte und Homeoffice können am selben Tag als Mischtag erfasst werden; dabei zählt der Tag insgesamt nur einmal.
 
+![Dialog zum manuellen Erfassen eines Arbeitstags](docs/images/Arbeitstag_erfassen.jpg)
+
 Im Bereich **Daten & Export** kannst du Steuerjahre oder eigene Zeiträume auswählen. Monatsübersicht, Tagesliste und Änderungsverlauf lassen sich aufklappen. Die Exportdateien enthalten nur Tage, die Steuertage erfasst hat. Manuell als „Kein Arbeitstag“ markierte Tage werden nicht als Arbeitstage gezählt oder exportiert.
+
+![Daten und Export in Steuertage](docs/images/Export.PNG)
 
 ## Sicherung und Wiederherstellung
 
@@ -63,13 +72,11 @@ Beim Wiederherstellen gibt es zwei Möglichkeiten:
 
 Eine Wiederherstellung betrifft nur Personen, die aktuell in Steuertage eingerichtet sind. Bewahre zusätzlich ein aktuelles Home-Assistant-Backup auf.
 
-## Umstieg von HA Work-Log
-
-Steuertage verwendet die Integrations-Domain `steuertage` und ist kein direktes Upgrade der bisherigen `ha_worklog`-Integration. Sichere benötigte Daten, entferne HA Work-Log und richte Steuertage neu ein. Alte Konfigurationen und lokale Verläufe werden nicht automatisch übernommen.
-
 ## Hilfe und Rückmeldungen
 
 Fehler, Fragen und Vorschläge kannst du über [GitHub Issues](https://github.com/mongrelX15/Steuertage/issues) melden. Bitte füge keine Zugangsdaten, privaten Adressen oder personenbezogenen Kalenderdaten bei.
+
+![Informationsdialog in Steuertage](docs/images/Informationen.PNG)
 
 ## Lizenz
 

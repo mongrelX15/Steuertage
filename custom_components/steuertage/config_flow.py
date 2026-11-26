@@ -3,14 +3,19 @@ from __future__ import annotations
 
 from typing import Any
 
+import probatio
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 from homeassistant.helpers.selector import NumberSelectorMode
 
 from .const import (
     CONF_DEVICE_TRACKER,
     CONF_HA_USER_ID,
+    CONF_HOLIDAY_COUNTRY,
+    CONF_HOLIDAY_SUBDIVISION,
+    CONF_SHOW_HOLIDAYS,
     CONF_HOME_OFFICE_ENABLED,
     CONF_HOME_ZONE,
     CONF_OFFICE_ZONE,
@@ -23,7 +28,29 @@ from .const import (
     DEFAULT_THRESHOLD_HOURS,
     DOMAIN,
 )
+from .holiday_dates import supported_countries
 from .logic import find_person_configuration_conflicts
+
+
+_SETUP_SECTIONS = {
+    "homeoffice": (CONF_HOME_OFFICE_ENABLED, CONF_HOME_ZONE, CONF_DEVICE_TRACKER),
+    "work_calendar": (CONF_WORK_CALENDAR_ENABLED, CONF_WORK_CALENDAR),
+    "holidays": (CONF_SHOW_HOLIDAYS, CONF_HOLIDAY_COUNTRY, CONF_HOLIDAY_SUBDIVISION),
+}
+
+
+def _flatten_setup(values: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **{key: value for key, value in values.items() if key not in _SETUP_SECTIONS},
+        **{key: value for name in _SETUP_SECTIONS for key, value in values.get(name, {}).items()},
+    }
+
+
+def _setup_errors(errors: dict[str, str]) -> dict[str, str]:
+    sections_by_field = {
+        key: name for name, fields in _SETUP_SECTIONS.items() for key in fields
+    }
+    return {sections_by_field.get(key, key): error for key, error in errors.items()}
 
 
 def _optional_entity_field(
@@ -34,7 +61,7 @@ def _optional_entity_field(
 ) -> None:
     """Add an entity selector that stays optional when left blank."""
     default = defaults.get(key)
-    marker = vol.Optional(key, default=default) if default else vol.Optional(key)
+    marker = probatio.Optional(key, default=default) if default else probatio.Optional(key)
     fields[marker] = selector.EntitySelector(
         selector.EntitySelectorConfig(domain=domain)
     )
@@ -42,16 +69,18 @@ def _optional_entity_field(
 
 def _setup_schema(
     defaults: dict[str, Any] | None = None, *, include_person: bool = True
-) -> vol.Schema:
+) -> probatio.Schema:
     """Build the complete one-page setup form."""
     defaults = defaults or {}
     fields: dict[Any, Any] = {}
+    sections: dict[str, dict[Any, Any]] = {name: {} for name in _SETUP_SECTIONS}
+    root = fields
     if include_person:
-        fields[vol.Required(CONF_PERSON)] = selector.EntitySelector(
+        fields[probatio.Required(CONF_PERSON)] = selector.EntitySelector(
             selector.EntitySelectorConfig(domain="person")
         )
 
-    fields[vol.Required(
+    fields[probatio.Required(
         CONF_OFFICE_ZONE,
         default=defaults.get(CONF_OFFICE_ZONE) or "",
     )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="zone"))
@@ -60,7 +89,7 @@ def _setup_schema(
         CONF_THRESHOLD_HOURS,
         float(legacy_minutes) / 60 if legacy_minutes is not None else DEFAULT_THRESHOLD_HOURS,
     )
-    fields[vol.Required(
+    fields[probatio.Required(
         CONF_THRESHOLD_HOURS,
         default=float(default_hours),
     )] = selector.NumberSelector(
@@ -68,20 +97,41 @@ def _setup_schema(
             min=0.5, max=24, step=0.5, mode=NumberSelectorMode.BOX
         )
     )
-    fields[vol.Required(
+    fields = sections["homeoffice"]
+    fields[probatio.Required(
         CONF_HOME_OFFICE_ENABLED,
         default=bool(defaults.get(CONF_HOME_OFFICE_ENABLED, False)),
     )] = selector.BooleanSelector()
     _optional_entity_field(fields, CONF_HOME_ZONE, "zone", defaults)
     _optional_entity_field(fields, CONF_DEVICE_TRACKER, "device_tracker", defaults)
-    fields[vol.Required(
+    fields = sections["work_calendar"]
+    fields[probatio.Required(
         CONF_WORK_CALENDAR_ENABLED,
         default=bool(defaults.get(
             CONF_WORK_CALENDAR_ENABLED, bool(defaults.get(CONF_WORK_CALENDAR))
         )),
     )] = selector.BooleanSelector()
     _optional_entity_field(fields, CONF_WORK_CALENDAR, "calendar", defaults)
-    return vol.Schema(fields)
+    fields = sections["holidays"]
+    fields[probatio.Optional(
+        CONF_SHOW_HOLIDAYS, default=bool(defaults.get(CONF_SHOW_HOLIDAYS))
+    )] = selector.BooleanSelector()
+    country = defaults.get(CONF_HOLIDAY_COUNTRY)
+    country_field = (
+        probatio.Optional(CONF_HOLIDAY_COUNTRY, default=country)
+        if country
+        else probatio.Optional(CONF_HOLIDAY_COUNTRY)
+    )
+    fields[country_field] = selector.CountrySelector(
+        selector.CountrySelectorConfig(countries=sorted(supported_countries()))
+    )
+    fields[probatio.Optional(
+        CONF_HOLIDAY_SUBDIVISION,
+        description={"suggested_value": defaults.get(CONF_HOLIDAY_SUBDIVISION) or ""},
+    )] = selector.TextSelector()
+    for name, fields in sections.items():
+        root[probatio.Required(name)] = section(probatio.Schema(fields))
+    return probatio.Schema(root)
 
 
 def _base_schema(
@@ -189,6 +239,21 @@ def _normalize_base(values: dict[str, Any]) -> dict[str, Any]:
         values[CONF_WORK_SIGNAL] = None
     if not values[CONF_WORK_CALENDAR_ENABLED]:
         values[CONF_WORK_CALENDAR] = None
+    values[CONF_SHOW_HOLIDAYS] = bool(values.get(CONF_SHOW_HOLIDAYS))
+    values[CONF_HOLIDAY_COUNTRY] = (values.get(CONF_HOLIDAY_COUNTRY) or "").strip().upper()
+    country = values[CONF_HOLIDAY_COUNTRY]
+    subdivision = (values.get(CONF_HOLIDAY_SUBDIVISION) or "").strip()
+    if country and subdivision.upper().startswith(country + "-"):
+        subdivision = subdivision[len(country) + 1:]
+    if subdivision:
+        subdivision = next(
+            (
+                code for code in supported_countries().get(country, [])
+                if code.casefold() == subdivision.casefold()
+            ),
+            subdivision,
+        )
+    values[CONF_HOLIDAY_SUBDIVISION] = subdivision
     return values
 
 
@@ -214,6 +279,13 @@ def _feature_errors(values: dict[str, Any]) -> dict[str, str]:
             return errors
     if values.get(CONF_WORK_CALENDAR_ENABLED) and not values.get(CONF_WORK_CALENDAR):
         return {CONF_WORK_CALENDAR: "work_calendar_required"}
+    if values[CONF_SHOW_HOLIDAYS]:
+        subdivisions = supported_countries().get(values[CONF_HOLIDAY_COUNTRY])
+        if subdivisions is None:
+            return {CONF_HOLIDAY_COUNTRY: "holiday_country_required"}
+        subdivision = values[CONF_HOLIDAY_SUBDIVISION]
+        if subdivision and subdivision not in subdivisions:
+            return {CONF_HOLIDAY_SUBDIVISION: "holiday_subdivision_invalid"}
     return {}
 
 
@@ -235,8 +307,10 @@ class WorklogConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Collect all setup settings on one page."""
+        await self.hass.async_add_executor_job(supported_countries)
         errors: dict[str, str] = {}
         if user_input is not None:
+            user_input = _flatten_setup(user_input)
             values = _normalize_base(dict(user_input))
             errors = _base_errors(values) or _feature_errors(values)
             if not errors:
@@ -250,7 +324,7 @@ class WorklogConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=_setup_schema(user_input),
-            errors=errors,
+            errors=_setup_errors(errors),
         )
 
     async def async_step_features(self, user_input: dict[str, Any] | None = None):
@@ -366,10 +440,16 @@ class WorklogOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Update all settings on one page."""
+        await self.hass.async_add_executor_job(supported_countries)
         current = _configuration(self.config_entry)
-        values_for_form = {**current, **(user_input or {})}
         if user_input is not None:
-            values = _normalize_base({**current, **user_input})
+            user_input = _flatten_setup(user_input)
+            values_for_form = {
+                **current,
+                **user_input,
+                CONF_HOLIDAY_SUBDIVISION: user_input.get(CONF_HOLIDAY_SUBDIVISION, ""),
+            }
+            values = _normalize_base(dict(values_for_form))
             errors = _base_errors(values) or _feature_errors(values)
             if not errors:
                 errors = {key: key for key in _find_conflicts(
@@ -382,7 +462,7 @@ class WorklogOptionsFlow(config_entries.OptionsFlow):
             return self.async_show_form(
                 step_id="init",
                 data_schema=_setup_schema(values_for_form, include_person=False),
-                errors=errors,
+                errors=_setup_errors(errors),
             )
         return self.async_show_form(
             step_id="init",

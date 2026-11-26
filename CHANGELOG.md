@@ -1,5 +1,18 @@
 # Änderungsprotokoll
 
+## 1.0.4-beta.1
+
+- Gesetzliche Feiertage nach Land und Region im Kalender anzeigen.
+- Dienstreisen als Tagestyp erfassen und auswerten.
+- Tagestypen direkt unter dem Kalender bearbeiten und einzelne Tage per erneutem Antippen abwählen.
+- PDF-, HTML-, TXT- und CSV-Exporte mit Gesamtsummen, Tagesprotokoll und Versionsangabe.
+- Die Vorabversion ist im App-Header mit BETA gekennzeichnet.
+
+## 1.0.2
+
+- Testdaten verwenden fiktive Personen und Entitäten.
+- Die README zeigt das Dashboard und weitere Ansichten der Integration.
+
 ## 1.0.0
 
 Erste stabile Version der 1.0-Reihe.

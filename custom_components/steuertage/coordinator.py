@@ -45,6 +45,7 @@ DAY_TYPES = (
     "office",
     "office_and_home_office",
     "needs_review",
+    "business_trip",
     "vacation",
     "sick_leave",
 )

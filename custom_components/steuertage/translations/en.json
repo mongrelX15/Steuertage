@@ -3,16 +3,42 @@
     "step": {
       "user": {
         "title": "Set up Steuertage",
-        "description": "Set up everything in this dialog. The work location is where you travel for work. The threshold is the minimum time spent in the work zone or, when enabled, the home zone before a day is counted automatically (default: 2 hours). Homeoffice and work calendar are optional; their extra selectors are also optional unless the corresponding feature is enabled.",
+        "description": "Set up Steuertage for one person.\n\n**Work location.** Set up a zone for your workplace in Home Assistant and select a person with location tracking, for example via the Home Assistant Companion app. The threshold is the minimum time in the work zone or, if enabled, the home zone before Steuertage counts a day automatically (default: 2 hours).",
         "data": {
           "person_entity": "Person",
           "office_zone": "Work location (zone)",
-          "threshold_hours": "Minimum time before a day counts (hours; default 2)",
-          "homeoffice_enabled": "Use Homeoffice detection",
-          "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
-          "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)",
-          "work_calendar_enabled": "Use a work calendar",
-          "work_calendar": "Work calendar (optional; required when enabled)"
+          "threshold_hours": "Minimum time before a day counts (hours; default 2)"
+        },
+        "sections": {
+          "homeoffice": {
+            "name": "Homeoffice",
+            "data": {
+              "homeoffice_enabled": "Use Homeoffice detection",
+              "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
+              "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)"
+            },
+            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (`device_tracker`) for your work computer. A network integration such as [FRITZ!Box Tools](https://www.home-assistant.io/integrations/fritz/) or [UniFi Network](https://www.home-assistant.io/integrations/unifi/) can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
+          },
+          "work_calendar": {
+            "name": "Work calendar",
+            "data": {
+              "work_calendar_enabled": "Use a work calendar",
+              "work_calendar": "Select calendar"
+            },
+            "description": "Optional. Select a calendar from Home Assistant to count time in the work zone only during scheduled work events."
+          },
+          "holidays": {
+            "name": "Public holidays",
+            "data": {
+              "show_holidays": "Show public holidays",
+              "holiday_country": "Holiday country",
+              "holiday_subdivision": "State or region code (optional)"
+            },
+            "data_description": {
+              "holiday_subdivision": "Leave blank for nationwide holidays only.\n\n**German states**\n`BW` Baden-Württemberg · `BY` Bavaria · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hesse · `MV` Mecklenburg-Western Pomerania\n`NI` Lower Saxony · `NW` North Rhine-Westphalia · `RP` Rhineland-Palatinate · `SL` Saarland\n`SN` Saxony · `ST` Saxony-Anhalt · `SH` Schleswig-Holstein · `TH` Thuringia\n\n[Region codes for other countries](https://pypi.org/project/holidays/0.108/#user-content-available-countries) · Column **Subdivisions**"
+            },
+            "description": "Optional. Select a country and, if needed, a region to mark public holidays in the calendar."
+          }
         }
       },
       "features": {
@@ -63,7 +89,9 @@
       "homeoffice_device_required": "Select a device for Homeoffice detection.",
       "office_zone_required": "Select the work zone (work location).",
       "work_calendar_required": "Select a work calendar.",
-      "user_already_configured": "This legacy Home Assistant user mapping is already assigned to another person."
+      "user_already_configured": "This legacy Home Assistant user mapping is already assigned to another person.",
+      "holiday_country_required": "Select a country to show public holidays.",
+      "holiday_subdivision_invalid": "This region code is not supported for the selected country."
     },
     "abort": {
       "already_configured": "Steuertage is already set up for this person."
@@ -73,15 +101,41 @@
     "step": {
       "init": {
         "title": "Steuertage settings",
-        "description": "Adjust all settings in one dialog. The work location is where you travel for work. The threshold is the minimum time spent in the work zone or, when enabled, the home zone before a day is counted automatically (default: 2 hours). Homeoffice and work calendar are optional; their extra selectors are also optional unless the corresponding feature is enabled.",
+        "description": "Adjust the settings for this person.\n\n**Work location.** Set up a zone for your workplace in Home Assistant and select a person with location tracking, for example via the Home Assistant Companion app. The threshold is the minimum time in the work zone or, if enabled, the home zone before Steuertage counts a day automatically (default: 2 hours).",
         "data": {
           "office_zone": "Work location (zone)",
-          "threshold_hours": "Minimum time before a day counts (hours; default 2)",
-          "homeoffice_enabled": "Use Homeoffice detection",
-          "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
-          "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)",
-          "work_calendar_enabled": "Use a work calendar",
-          "work_calendar": "Work calendar (optional; required when enabled)"
+          "threshold_hours": "Minimum time before a day counts (hours; default 2)"
+        },
+        "sections": {
+          "homeoffice": {
+            "name": "Homeoffice",
+            "data": {
+              "homeoffice_enabled": "Use Homeoffice detection",
+              "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
+              "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)"
+            },
+            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (`device_tracker`) for your work computer. A network integration such as [FRITZ!Box Tools](https://www.home-assistant.io/integrations/fritz/) or [UniFi Network](https://www.home-assistant.io/integrations/unifi/) can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
+          },
+          "work_calendar": {
+            "name": "Work calendar",
+            "data": {
+              "work_calendar_enabled": "Use a work calendar",
+              "work_calendar": "Select calendar"
+            },
+            "description": "Optional. Select a calendar from Home Assistant to count time in the work zone only during scheduled work events."
+          },
+          "holidays": {
+            "name": "Public holidays",
+            "data": {
+              "show_holidays": "Show public holidays",
+              "holiday_country": "Holiday country",
+              "holiday_subdivision": "State or region code (optional)"
+            },
+            "data_description": {
+              "holiday_subdivision": "Leave blank for nationwide holidays only.\n\n**German states**\n`BW` Baden-Württemberg · `BY` Bavaria · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hesse · `MV` Mecklenburg-Western Pomerania\n`NI` Lower Saxony · `NW` North Rhine-Westphalia · `RP` Rhineland-Palatinate · `SL` Saarland\n`SN` Saxony · `ST` Saxony-Anhalt · `SH` Schleswig-Holstein · `TH` Thuringia\n\n[Region codes for other countries](https://pypi.org/project/holidays/0.108/#user-content-available-countries) · Column **Subdivisions**"
+            },
+            "description": "Optional. Select a country and, if needed, a region to mark public holidays in the calendar."
+          }
         }
       },
       "manage": {
@@ -127,7 +181,9 @@
       "homeoffice_device_required": "Select a device for Homeoffice detection.",
       "office_zone_required": "Select the work zone (work location).",
       "work_calendar_required": "Select a work calendar.",
-      "user_already_configured": "This legacy Home Assistant user mapping is already assigned to another person."
+      "user_already_configured": "This legacy Home Assistant user mapping is already assigned to another person.",
+      "holiday_country_required": "Select a country to show public holidays.",
+      "holiday_subdivision_invalid": "This region code is not supported for the selected country."
     }
   }
 }
