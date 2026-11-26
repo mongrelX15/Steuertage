@@ -1111,15 +1111,10 @@ class SteuertagePanel extends HTMLElement {
   _updateView(markup) {
     this._viewListeners?.abort();
     this._viewListeners = new AbortController();
-    if (this._tab !== "calendar" || this._renderedTab !== "calendar") {
-      this._view.innerHTML = markup;
-    } else {
-      // Keep the calendar controls connected during data and layout updates.
-      const template = document.createElement("template");
-      template.innerHTML = markup;
-      this._updateViewChildren(this._view, template.content);
-    }
-    this._renderedTab = this._tab;
+    // Keep the shared header and the active controls connected on every tab.
+    const template = document.createElement("template");
+    template.innerHTML = markup;
+    this._updateViewChildren(this._view, template.content);
   }
 
   _updateViewChildren(current, incoming) {
@@ -1127,7 +1122,9 @@ class SteuertagePanel extends HTMLElement {
       if (node.nodeType !== Node.ELEMENT_NODE) return node.nodeType;
       const identity = node.dataset?.action ?? node.dataset?.type ?? node.dataset?.date ??
         node.dataset?.calendar ?? node.dataset?.reviewDate ?? node.dataset?.rangeWeekday ??
-        node.dataset?.rangePreset ?? node.classList[0] ?? "";
+        node.dataset?.rangePreset ?? node.dataset?.disclosureId ?? node.dataset?.tab ??
+        node.dataset?.year ?? node.dataset?.period ?? node.dataset?.download ??
+        (node.localName === "option" ? node.value : node.classList[0]) ?? "";
       return node.tagName + ":" + identity;
     };
     const available = new Map();
@@ -1163,13 +1160,19 @@ class SteuertagePanel extends HTMLElement {
           if (name === "value" && child.localName === "input") child.value = value;
         }
       }
+      const selectedValue = child.localName === "select" ? next.value : null;
       this._updateViewChildren(child, next);
+      if (selectedValue !== null && child.value !== selectedValue) child.value = selectedValue;
     }
   }
 
   _render({ preserveEditorPosition = false } = {}) {
     if (!this._hass) return;
     const scrollPositions = this._scrollPositions();
+    const exportPeriod = this._tab === "export" && scrollPositions.length
+      ? this.shadowRoot.querySelector(".export-period")
+      : null;
+    const exportPeriodRect = exportPeriod?.getBoundingClientRect();
     const editorTop = this._tab === "calendar" && (preserveEditorPosition || this._busy)
       ? this._calendarEditorTop()
       : null;
@@ -1414,6 +1417,26 @@ class SteuertagePanel extends HTMLElement {
       .history-symbol { font-size: 16px; line-height: 1; }
       .calendar-help-mobile { display: none; }
       .day { touch-action: manipulation; }
+      .day:is(.selected, .range-selected) {
+        font-weight: 750;
+        opacity: 1;
+      }
+      .day:is(.selected, .range-selected)::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border: 3px solid var(--primary-color, #ec9b2d);
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px var(--primary-text-color, CanvasText);
+        pointer-events: none;
+      }
+      .day:is(.selected, .range-selected):focus-visible {
+        outline: 2px solid var(--primary-text-color, CanvasText);
+        outline-offset: 2px;
+      }
+      .day.today.type-tracking:is(.selected, .range-selected)::after {
+        inset: 5px;
+      }
       .day.today.type-tracking::after {
         content: "";
         position: absolute;
@@ -1538,6 +1561,10 @@ class SteuertagePanel extends HTMLElement {
       const editor = this.shadowRoot.querySelector(".selection-card");
       const scroller = scrollPositions[0].element;
       if (editor) scroller.scrollTop += editor.getBoundingClientRect().top - editorTop;
+    }
+    if (exportPeriod?.isConnected && exportPeriodRect &&
+        exportPeriodRect.bottom > 0 && exportPeriodRect.top < window.innerHeight) {
+      scrollPositions[0].element.scrollTop += exportPeriod.getBoundingClientRect().top - exportPeriodRect.top;
     }
     const menu = this.shadowRoot.querySelector("ha-menu-button");
     if (menu) menu.hass = this._hass;
