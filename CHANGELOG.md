@@ -1,12 +1,12 @@
 # Änderungsprotokoll
 
-## 1.0.4-beta.1
+## 1.0.4
 
 - Gesetzliche Feiertage nach Land und Region im Kalender anzeigen.
 - Dienstreisen als Tagestyp erfassen und auswerten.
 - Tagestypen direkt unter dem Kalender bearbeiten und einzelne Tage per erneutem Antippen abwählen.
 - PDF-, HTML-, TXT- und CSV-Exporte mit Gesamtsummen, Tagesprotokoll und Versionsangabe.
-- Die Vorabversion ist im App-Header mit BETA gekennzeichnet.
+- Kompatibilität der Feiertagsbibliothek mit Home Assistant und Hilfelinks im Einrichtungsassistenten korrigiert.
 
 ## 1.0.2
 
