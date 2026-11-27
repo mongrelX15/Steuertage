@@ -17,7 +17,7 @@
               "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
               "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)"
             },
-            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (`device_tracker`) for your work computer. A network integration such as [FRITZ!Box Tools](https://www.home-assistant.io/integrations/fritz/) or [UniFi Network](https://www.home-assistant.io/integrations/unifi/) can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
+            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (`device_tracker`) for your work computer. A network integration such as [FRITZ!Box Tools]({fritz_url}) or [UniFi Network]({unifi_url}) can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
           },
           "work_calendar": {
             "name": "Work calendar",
@@ -35,7 +35,7 @@
               "holiday_subdivision": "State or region code (optional)"
             },
             "data_description": {
-              "holiday_subdivision": "Leave blank for nationwide holidays only.\n\n**German states**\n`BW` Baden-Württemberg · `BY` Bavaria · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hesse · `MV` Mecklenburg-Western Pomerania\n`NI` Lower Saxony · `NW` North Rhine-Westphalia · `RP` Rhineland-Palatinate · `SL` Saarland\n`SN` Saxony · `ST` Saxony-Anhalt · `SH` Schleswig-Holstein · `TH` Thuringia\n\n[Region codes for other countries](https://pypi.org/project/holidays/0.108/#user-content-available-countries) · Column **Subdivisions**"
+              "holiday_subdivision": "Leave blank for nationwide holidays only.\n\n**German states**\n`BW` Baden-Württemberg · `BY` Bavaria · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hesse · `MV` Mecklenburg-Western Pomerania\n`NI` Lower Saxony · `NW` North Rhine-Westphalia · `RP` Rhineland-Palatinate · `SL` Saarland\n`SN` Saxony · `ST` Saxony-Anhalt · `SH` Schleswig-Holstein · `TH` Thuringia\n\n[Region codes for other countries]({regions_url}) · Column **Subdivisions**"
             },
             "description": "Optional. Select a country and, if needed, a region to mark public holidays in the calendar."
           }
@@ -114,7 +114,7 @@
               "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
               "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)"
             },
-            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (`device_tracker`) for your work computer. A network integration such as [FRITZ!Box Tools](https://www.home-assistant.io/integrations/fritz/) or [UniFi Network](https://www.home-assistant.io/integrations/unifi/) can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
+            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (`device_tracker`) for your work computer. A network integration such as [FRITZ!Box Tools]({fritz_url}) or [UniFi Network]({unifi_url}) can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
           },
           "work_calendar": {
             "name": "Work calendar",
@@ -132,7 +132,7 @@
               "holiday_subdivision": "State or region code (optional)"
             },
             "data_description": {
-              "holiday_subdivision": "Leave blank for nationwide holidays only.\n\n**German states**\n`BW` Baden-Württemberg · `BY` Bavaria · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hesse · `MV` Mecklenburg-Western Pomerania\n`NI` Lower Saxony · `NW` North Rhine-Westphalia · `RP` Rhineland-Palatinate · `SL` Saarland\n`SN` Saxony · `ST` Saxony-Anhalt · `SH` Schleswig-Holstein · `TH` Thuringia\n\n[Region codes for other countries](https://pypi.org/project/holidays/0.108/#user-content-available-countries) · Column **Subdivisions**"
+              "holiday_subdivision": "Leave blank for nationwide holidays only.\n\n**German states**\n`BW` Baden-Württemberg · `BY` Bavaria · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hesse · `MV` Mecklenburg-Western Pomerania\n`NI` Lower Saxony · `NW` North Rhine-Westphalia · `RP` Rhineland-Palatinate · `SL` Saarland\n`SN` Saxony · `ST` Saxony-Anhalt · `SH` Schleswig-Holstein · `TH` Thuringia\n\n[Region codes for other countries]({regions_url}) · Column **Subdivisions**"
             },
             "description": "Optional. Select a country and, if needed, a region to mark public holidays in the calendar."
           }

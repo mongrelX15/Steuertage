@@ -17,7 +17,7 @@
               "home_zone": "Home-Zone (optional; erforderlich bei aktivierter Homeoffice-Erkennung)",
               "homeoffice_device": "Homeoffice-Gerät (optional; erforderlich bei aktivierter Homeoffice-Erkennung)"
             },
-            "description": "Für die automatische Homeoffice-Erkennung brauchst du eine Zone für dein Zuhause und einen Gerätetracker (`device_tracker`) für deinen Arbeitsrechner. Eine Netzwerkintegration wie [FRITZ!Box Tools](https://www.home-assistant.io/integrations/fritz/) oder [UniFi Network](https://www.home-assistant.io/integrations/unifi/) kann erfassen, ob der Rechner im Heimnetz ist. Steuertage zählt die Zeit, in der du und dein Arbeitsrechner gleichzeitig zu Hause erkannt werden."
+            "description": "Für die automatische Homeoffice-Erkennung brauchst du eine Zone für dein Zuhause und einen Gerätetracker (`device_tracker`) für deinen Arbeitsrechner. Eine Netzwerkintegration wie [FRITZ!Box Tools]({fritz_url}) oder [UniFi Network]({unifi_url}) kann erfassen, ob der Rechner im Heimnetz ist. Steuertage zählt die Zeit, in der du und dein Arbeitsrechner gleichzeitig zu Hause erkannt werden."
           },
           "work_calendar": {
             "name": "Arbeitskalender",
@@ -35,7 +35,7 @@
               "holiday_subdivision": "Bundesland- oder Regionskürzel (optional)"
             },
             "data_description": {
-              "holiday_subdivision": "Feld leer lassen, um nur landesweite Feiertage anzuzeigen.\n\n**Deutsche Bundesländer**\n`BW` Baden-Württemberg · `BY` Bayern · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hessen · `MV` Mecklenburg-Vorpommern\n`NI` Niedersachsen · `NW` Nordrhein-Westfalen · `RP` Rheinland-Pfalz · `SL` Saarland\n`SN` Sachsen · `ST` Sachsen-Anhalt · `SH` Schleswig-Holstein · `TH` Thüringen\n\n[Regionskürzel weiterer Länder](https://pypi.org/project/holidays/0.108/#user-content-available-countries) · Spalte **Subdivisions**"
+              "holiday_subdivision": "Feld leer lassen, um nur landesweite Feiertage anzuzeigen.\n\n**Deutsche Bundesländer**\n`BW` Baden-Württemberg · `BY` Bayern · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hessen · `MV` Mecklenburg-Vorpommern\n`NI` Niedersachsen · `NW` Nordrhein-Westfalen · `RP` Rheinland-Pfalz · `SL` Saarland\n`SN` Sachsen · `ST` Sachsen-Anhalt · `SH` Schleswig-Holstein · `TH` Thüringen\n\n[Regionskürzel weiterer Länder]({regions_url}) · Spalte **Subdivisions**"
             },
             "description": "Optional. Wähle Land und bei Bedarf eine Region, um Feiertage im Kalender zu markieren."
           }
@@ -114,7 +114,7 @@
               "home_zone": "Home-Zone (optional; erforderlich bei aktivierter Homeoffice-Erkennung)",
               "homeoffice_device": "Homeoffice-Gerät (optional; erforderlich bei aktivierter Homeoffice-Erkennung)"
             },
-            "description": "Für die automatische Homeoffice-Erkennung brauchst du eine Zone für dein Zuhause und einen Gerätetracker (`device_tracker`) für deinen Arbeitsrechner. Eine Netzwerkintegration wie [FRITZ!Box Tools](https://www.home-assistant.io/integrations/fritz/) oder [UniFi Network](https://www.home-assistant.io/integrations/unifi/) kann erfassen, ob der Rechner im Heimnetz ist. Steuertage zählt die Zeit, in der du und dein Arbeitsrechner gleichzeitig zu Hause erkannt werden."
+            "description": "Für die automatische Homeoffice-Erkennung brauchst du eine Zone für dein Zuhause und einen Gerätetracker (`device_tracker`) für deinen Arbeitsrechner. Eine Netzwerkintegration wie [FRITZ!Box Tools]({fritz_url}) oder [UniFi Network]({unifi_url}) kann erfassen, ob der Rechner im Heimnetz ist. Steuertage zählt die Zeit, in der du und dein Arbeitsrechner gleichzeitig zu Hause erkannt werden."
           },
           "work_calendar": {
             "name": "Arbeitskalender",
@@ -132,7 +132,7 @@
               "holiday_subdivision": "Bundesland- oder Regionskürzel (optional)"
             },
             "data_description": {
-              "holiday_subdivision": "Feld leer lassen, um nur landesweite Feiertage anzuzeigen.\n\n**Deutsche Bundesländer**\n`BW` Baden-Württemberg · `BY` Bayern · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hessen · `MV` Mecklenburg-Vorpommern\n`NI` Niedersachsen · `NW` Nordrhein-Westfalen · `RP` Rheinland-Pfalz · `SL` Saarland\n`SN` Sachsen · `ST` Sachsen-Anhalt · `SH` Schleswig-Holstein · `TH` Thüringen\n\n[Regionskürzel weiterer Länder](https://pypi.org/project/holidays/0.108/#user-content-available-countries) · Spalte **Subdivisions**"
+              "holiday_subdivision": "Feld leer lassen, um nur landesweite Feiertage anzuzeigen.\n\n**Deutsche Bundesländer**\n`BW` Baden-Württemberg · `BY` Bayern · `BE` Berlin · `BB` Brandenburg\n`HB` Bremen · `HH` Hamburg · `HE` Hessen · `MV` Mecklenburg-Vorpommern\n`NI` Niedersachsen · `NW` Nordrhein-Westfalen · `RP` Rheinland-Pfalz · `SL` Saarland\n`SN` Sachsen · `ST` Sachsen-Anhalt · `SH` Schleswig-Holstein · `TH` Thüringen\n\n[Regionskürzel weiterer Länder]({regions_url}) · Spalte **Subdivisions**"
             },
             "description": "Optional. Wähle Land und bei Bedarf eine Region, um Feiertage im Kalender zu markieren."
           }

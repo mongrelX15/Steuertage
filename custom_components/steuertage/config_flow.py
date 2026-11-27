@@ -32,6 +32,13 @@ from .holiday_dates import supported_countries
 from .logic import find_person_configuration_conflicts
 
 
+_SETUP_LINKS = {
+    "fritz_url": "https://www.home-assistant.io/integrations/fritz/",
+    "unifi_url": "https://www.home-assistant.io/integrations/unifi/",
+    "regions_url": "https://pypi.org/project/holidays/#user-content-available-countries",
+}
+
+
 _SETUP_SECTIONS = {
     "homeoffice": (CONF_HOME_OFFICE_ENABLED, CONF_HOME_ZONE, CONF_DEVICE_TRACKER),
     "work_calendar": (CONF_WORK_CALENDAR_ENABLED, CONF_WORK_CALENDAR),
@@ -323,6 +330,7 @@ class WorklogConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_finish()
         return self.async_show_form(
             step_id="user",
+            description_placeholders=_SETUP_LINKS,
             data_schema=_setup_schema(user_input),
             errors=_setup_errors(errors),
         )
@@ -461,11 +469,13 @@ class WorklogOptionsFlow(config_entries.OptionsFlow):
                 return self.async_create_entry(title="", data=values)
             return self.async_show_form(
                 step_id="init",
+                description_placeholders=_SETUP_LINKS,
                 data_schema=_setup_schema(values_for_form, include_person=False),
                 errors=_setup_errors(errors),
             )
         return self.async_show_form(
             step_id="init",
+            description_placeholders=_SETUP_LINKS,
             data_schema=_setup_schema(current, include_person=False),
         )
 
@@ -553,6 +563,7 @@ class WorklogOptionsFlow(config_entries.OptionsFlow):
         if errors:
             return self.async_show_form(
                 step_id="init",
+                description_placeholders=_SETUP_LINKS,
                 data_schema=_base_schema(self._draft_config, include_person=False),
                 errors=errors,
             )

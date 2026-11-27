@@ -12,6 +12,6 @@
   "documentation": "https://github.com/mongrelX15/Steuertage",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/mongrelX15/Steuertage/issues",
-  "requirements": ["holidays==0.108"],
+  "requirements": ["holidays==0.109"],
   "version": "1.0.4-beta.1"
 }
