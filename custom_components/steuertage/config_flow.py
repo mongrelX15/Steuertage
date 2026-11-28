@@ -29,7 +29,7 @@ from .const import (
     DOMAIN,
 )
 from .holiday_dates import supported_countries
-from .logic import find_person_configuration_conflicts
+from .logic import find_person_configuration_conflicts, normalize_office_zones
 
 
 _SETUP_LINKS = {
@@ -87,10 +87,10 @@ def _setup_schema(
             selector.EntitySelectorConfig(domain="person")
         )
 
-    fields[probatio.Required(
+    fields[probatio.Optional(
         CONF_OFFICE_ZONE,
-        default=defaults.get(CONF_OFFICE_ZONE) or "",
-    )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="zone"))
+        default=normalize_office_zones(defaults.get(CONF_OFFICE_ZONE)),
+    )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="zone", multiple=True))
     legacy_minutes = defaults.get(CONF_THRESHOLD_MINUTES)
     default_hours = defaults.get(
         CONF_THRESHOLD_HOURS,
@@ -151,10 +151,10 @@ def _base_schema(
         fields[vol.Required(CONF_PERSON)] = selector.EntitySelector(
             selector.EntitySelectorConfig(domain="person")
         )
-    fields[vol.Required(
+    fields[vol.Optional(
         CONF_OFFICE_ZONE,
-        default=defaults.get(CONF_OFFICE_ZONE) or "",
-    )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="zone"))
+        default=normalize_office_zones(defaults.get(CONF_OFFICE_ZONE)),
+    )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="zone", multiple=True))
     legacy_minutes = defaults.get(CONF_THRESHOLD_MINUTES)
     default_hours = defaults.get(
         CONF_THRESHOLD_HOURS,
@@ -232,7 +232,7 @@ def _normalize_base(values: dict[str, Any]) -> dict[str, Any]:
         0.5, min(24.0, round(float(values[CONF_THRESHOLD_HOURS]) * 2) / 2)
     )
     values[CONF_HOME_OFFICE_ENABLED] = bool(values.get(CONF_HOME_OFFICE_ENABLED, False))
-    values[CONF_OFFICE_ZONE] = values.get(CONF_OFFICE_ZONE) or None
+    values[CONF_OFFICE_ZONE] = normalize_office_zones(values.get(CONF_OFFICE_ZONE))
     values[CONF_WORK_CALENDAR_ENABLED] = bool(
         values.get(CONF_WORK_CALENDAR_ENABLED, bool(values.get(CONF_WORK_CALENDAR)))
     )
@@ -266,7 +266,7 @@ def _normalize_base(values: dict[str, Any]) -> dict[str, Any]:
 
 def _base_errors(values: dict[str, Any]) -> dict[str, str]:
     """Require the work zone before offering optional setup."""
-    return {} if values.get(CONF_OFFICE_ZONE) else {CONF_OFFICE_ZONE: "office_zone_required"}
+    return {}
 
 
 def _homeoffice_errors(values: dict[str, Any]) -> dict[str, str]:
@@ -310,7 +310,7 @@ def _find_conflicts(hass, values: dict[str, Any], *, exclude_entry_id: str | Non
 class WorklogConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Set up one independently tracked person."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Collect all setup settings on one page."""
@@ -455,6 +455,7 @@ class WorklogOptionsFlow(config_entries.OptionsFlow):
             values_for_form = {
                 **current,
                 **user_input,
+                CONF_OFFICE_ZONE: user_input.get(CONF_OFFICE_ZONE, []),
                 CONF_HOLIDAY_SUBDIVISION: user_input.get(CONF_HOLIDAY_SUBDIVISION, ""),
             }
             values = _normalize_base(dict(values_for_form))

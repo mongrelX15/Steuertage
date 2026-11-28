@@ -3,10 +3,10 @@
     "step": {
       "user": {
         "title": "Steuertage einrichten",
-        "description": "Richte Steuertage für eine Person ein.\n\n**Arbeitsstätte.** Lege in Home Assistant eine Zone für deinen Arbeitsort an. Wähle die Person aus, deren Standort Home Assistant erfasst, zum Beispiel über die Home-Assistant-Companion-App. Der Schwellwert bestimmt, ab welcher Aufenthaltsdauer ein Tag automatisch zählt (Standard: 2 Stunden).",
+        "description": "Richte Steuertage für eine Person ein.\n\n**Arbeitsstätte.** Lege in Home Assistant eine oder mehrere Zonen für deine Arbeitsorte an. Wähle die Person aus, deren Standort Home Assistant erfasst, zum Beispiel über die Home-Assistant-Companion-App. Der Schwellwert bestimmt, ab welcher Aufenthaltsdauer ein Tag automatisch zählt (Standard: 2 Stunden).",
         "data": {
           "person_entity": "Person",
-          "office_zone": "Arbeitsstätte (Zone)",
+          "office_zone": "Arbeitsstätten (Zonen)",
           "threshold_hours": "Mindestanwesenheit bis ein Tag zählt (Stunden; Standard 2)"
         },
         "sections": {
@@ -17,7 +17,7 @@
               "home_zone": "Home-Zone (optional; erforderlich bei aktivierter Homeoffice-Erkennung)",
               "homeoffice_device": "Homeoffice-Gerät (optional; erforderlich bei aktivierter Homeoffice-Erkennung)"
             },
-            "description": "Für die automatische Homeoffice-Erkennung brauchst du eine Zone für dein Zuhause und einen Gerätetracker (`device_tracker`) für deinen Arbeitsrechner. Eine Netzwerkintegration wie [FRITZ!Box Tools]({fritz_url}) oder [UniFi Network]({unifi_url}) kann erfassen, ob der Rechner im Heimnetz ist. Steuertage zählt die Zeit, in der du und dein Arbeitsrechner gleichzeitig zu Hause erkannt werden."
+            "description": "Für die automatische Homeoffice-Erkennung brauchst du eine Zone für dein Zuhause und einen Gerätetracker (device_tracker) für deinen Arbeitsrechner. Eine Netzwerkintegration wie „FRITZ!Box Tools“ oder „UniFi Network“ kann erfassen, ob der Rechner im Heimnetz ist. Steuertage zählt die Zeit, in der du und dein Arbeitsrechner gleichzeitig zu Hause erkannt werden."
           },
           "work_calendar": {
             "name": "Arbeitskalender",
@@ -77,7 +77,7 @@
         "description": "Ändere Person, Arbeitsstätte oder Schwellwert und fahre danach mit den optionalen Funktionen fort.",
         "data": {
           "person_entity": "Person",
-          "office_zone": "Arbeitsstätte (Zone)",
+          "office_zone": "Arbeitsstätten (Zonen)",
           "threshold_hours": "Mindestdauer pro Signal (Stunden; Standard 2)"
         }
       }
@@ -101,9 +101,9 @@
     "step": {
       "init": {
         "title": "Steuertage-Einstellungen",
-        "description": "Passe die Einstellungen für diese Person an.\n\n**Arbeitsstätte.** Lege in Home Assistant eine Zone für deinen Arbeitsort an. Wähle die Person aus, deren Standort Home Assistant erfasst, zum Beispiel über die Home-Assistant-Companion-App. Der Schwellwert bestimmt, ab welcher Aufenthaltsdauer ein Tag automatisch zählt (Standard: 2 Stunden).",
+        "description": "Passe die Einstellungen für diese Person an.\n\n**Arbeitsstätte.** Lege in Home Assistant eine oder mehrere Zonen für deine Arbeitsorte an. Wähle die Person aus, deren Standort Home Assistant erfasst, zum Beispiel über die Home-Assistant-Companion-App. Der Schwellwert bestimmt, ab welcher Aufenthaltsdauer ein Tag automatisch zählt (Standard: 2 Stunden).",
         "data": {
-          "office_zone": "Arbeitsstätte (Zone)",
+          "office_zone": "Arbeitsstätten (Zonen)",
           "threshold_hours": "Mindestanwesenheit bis ein Tag zählt (Stunden; Standard 2)"
         },
         "sections": {
@@ -114,7 +114,7 @@
               "home_zone": "Home-Zone (optional; erforderlich bei aktivierter Homeoffice-Erkennung)",
               "homeoffice_device": "Homeoffice-Gerät (optional; erforderlich bei aktivierter Homeoffice-Erkennung)"
             },
-            "description": "Für die automatische Homeoffice-Erkennung brauchst du eine Zone für dein Zuhause und einen Gerätetracker (`device_tracker`) für deinen Arbeitsrechner. Eine Netzwerkintegration wie [FRITZ!Box Tools]({fritz_url}) oder [UniFi Network]({unifi_url}) kann erfassen, ob der Rechner im Heimnetz ist. Steuertage zählt die Zeit, in der du und dein Arbeitsrechner gleichzeitig zu Hause erkannt werden."
+            "description": "Für die automatische Homeoffice-Erkennung brauchst du eine Zone für dein Zuhause und einen Gerätetracker (device_tracker) für deinen Arbeitsrechner. Eine Netzwerkintegration wie „FRITZ!Box Tools“ oder „UniFi Network“ kann erfassen, ob der Rechner im Heimnetz ist. Steuertage zählt die Zeit, in der du und dein Arbeitsrechner gleichzeitig zu Hause erkannt werden."
           },
           "work_calendar": {
             "name": "Arbeitskalender",
@@ -184,6 +184,51 @@
       "user_already_configured": "Diese ältere HA-Benutzerzuordnung ist bereits einer anderen Person zugewiesen.",
       "holiday_country_required": "Wähle ein Land für die Feiertage aus.",
       "holiday_subdivision_invalid": "Dieses Regionskürzel wird für das gewählte Land nicht unterstützt."
+    }
+  }
+,
+  "entity": {
+    "sensor": {
+      "day_type": {
+        "name": "Heutiger Tagestyp",
+        "state": {
+          "no_work": "Kein Arbeitstag",
+          "tracking": "Erkennung läuft",
+          "home_office": "Homeoffice",
+          "office": "Arbeitsstätte",
+          "office_and_home_office": "Arbeitsstätte und Homeoffice",
+          "needs_review": "Bitte prüfen",
+          "business_trip": "Dienstreise",
+          "vacation": "Urlaub",
+          "sick_leave": "Krankheit"
+        }
+      },
+      "today_office_sites": {
+        "name": "Heutige Arbeitsstätten"
+      },
+      "homeoffice_month": {
+        "name": "Homeoffice-Tage im aktuellen Monat"
+      },
+      "office_month": {
+        "name": "Arbeitsstätten-Tage im aktuellen Monat"
+      },
+      "homeoffice_year": {
+        "name": "Homeoffice-Tage im aktuellen Jahr"
+      },
+      "office_year": {
+        "name": "Arbeitsstätten-Tage im aktuellen Jahr"
+      },
+      "open_reviews": {
+        "name": "Offene Überprüfungen"
+      },
+      "last_detection": {
+        "name": "Letzte automatische Erkennung"
+      }
+    },
+    "binary_sensor": {
+      "review_required": {
+        "name": "Überprüfung erforderlich"
+      }
     }
   }
 }

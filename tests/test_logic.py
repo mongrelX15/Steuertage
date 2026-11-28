@@ -18,6 +18,7 @@ detect_homeoffice = logic.detect_homeoffice
 append_manual_change = logic.append_manual_change
 make_storage_key = logic.make_storage_key
 normalize_day_record = logic.normalize_day_record
+normalize_office_zones = logic.normalize_office_zones
 
 
 def test_below_threshold_active_office_signal_is_tracking():
@@ -171,3 +172,59 @@ def test_options_flow_excludes_its_own_entry_from_conflict_checks():
         existing,
         exclude_entry_id="entry-a",
     ) == set()
+
+
+def test_office_zone_migration_and_unlimited_selection():
+    assert normalize_office_zones("zone.office") == ["zone.office"]
+    assert normalize_office_zones(None) == []
+    assert normalize_office_zones(["zone.a", "zone.b", "zone.c", "zone.b"]) == [
+        "zone.a", "zone.b", "zone.c"
+    ]
+    assert normalize_office_zones(["zone.a", "unavailable", None]) == ["zone.a"]
+
+
+def test_historical_office_days_stay_unassigned_without_evidence():
+    old = normalize_day_record(
+        {"day_type": "office", "office_seconds": 3600},
+        day_types=("office", "home_office", "no_work", "needs_review"),
+        override_types=("office", "home_office", "no_work"),
+    )
+    assert old["office_site_ids"] == []
+    assert old["manual_office_site_ids"] is None
+
+
+def test_site_assignments_and_audit_survive_normalization():
+    record = normalize_day_record(
+        {"day_type": "office", "office_seconds": 3600,
+         "office_site_ids": ["site_1", "site_2", "site_1"],
+         "automatic_office_site_ids": ["site_1"],
+         "manual_office_site_ids": ["site_2"],
+         "change_history": [{"changed_by": "user-a",
+                             "old_office_site_ids": ["site_1"],
+                             "new_office_site_ids": ["site_2"]}]},
+        day_types=("office", "no_work", "needs_review"),
+        override_types=("office", "no_work"),
+    )
+    assert record["office_site_ids"] == ["site_1", "site_2"]
+    assert record["automatic_office_site_ids"] == ["site_1"]
+    assert record["manual_office_site_ids"] == ["site_2"]
+    assert record["change_history"][0]["new_office_site_ids"] == ["site_2"]
+
+
+def test_overlapping_sites_match_same_position_without_double_time():
+    person = {"latitude": 50.7, "longitude": 7.1}
+    first = {"latitude": 50.7, "longitude": 7.1, "radius": 100}
+    second = {"latitude": 50.7001, "longitude": 7.1, "radius": 100}
+    far = {"latitude": 51.0, "longitude": 7.1, "radius": 100}
+    assert logic.within_zone_coordinates(person, first)
+    assert logic.within_zone_coordinates(person, second)
+    assert not logic.within_zone_coordinates(person, far)
+    assert classify_day(1800, 0, False, False, True, True) == "office"
+
+
+def test_invalid_or_missing_gps_does_not_assign_sites():
+    assert not logic.within_zone_coordinates({}, {"latitude": 50, "longitude": 7, "radius": 100})
+    assert not logic.within_zone_coordinates(
+        {"latitude": 50, "longitude": 7},
+        {"latitude": 50, "longitude": 7, "radius": float("nan")},
+    )

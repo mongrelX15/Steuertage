@@ -19,9 +19,10 @@ async def async_setup_entry(
 ) -> None:
     """Create the person's home-office presence sensor when tracker-based setup is used."""
     coordinator: WorklogCoordinator = hass.data[DOMAIN][entry.entry_id]
-    if not coordinator.homeoffice_enabled or coordinator.legacy_mode:
-        return
-    async_add_entities([WorklogHomeOfficeSensor(coordinator, entry)])
+    entities = [WorklogReviewSensor(coordinator, entry)]
+    if coordinator.homeoffice_enabled and not coordinator.legacy_mode:
+        entities.append(WorklogHomeOfficeSensor(coordinator, entry))
+    async_add_entities(entities)
 
 
 class WorklogHomeOfficeSensor(
@@ -68,3 +69,26 @@ class WorklogHomeOfficeSensor(
             "device_source_available": data["device_source_valid"],
             "detection_reason": data["homeoffice_reason"],
         }
+
+
+class WorklogReviewSensor(CoordinatorEntity[WorklogCoordinator], BinarySensorEntity):
+    """Report whether this person's history contains unresolved review days."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "review_required"
+    _attr_icon = "mdi:clipboard-alert-outline"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(self, coordinator: WorklogCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_review_required"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": f"Steuertage – {coordinator.person_name}",
+            "manufacturer": "Steuertage",
+            "model": "Steuertage",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.entity_summary()["open_reviews"] > 0

@@ -1,6 +1,8 @@
 """Pure classification helpers used by Steuertage."""
 from __future__ import annotations
 
+import math
+
 from .const import (
     BETA_THRESHOLD_SECONDS,
     CONF_DEVICE_TRACKER,
@@ -8,6 +10,32 @@ from .const import (
     CONF_WORK_SIGNAL,
     DOMAIN,
 )
+
+
+def within_zone_coordinates(person_attributes: dict, zone_attributes: dict) -> bool:
+    """Resolve overlapping office zones from GPS coordinates when available."""
+    try:
+        lat1 = math.radians(float(person_attributes["latitude"]))
+        lon1 = math.radians(float(person_attributes["longitude"]))
+        lat2 = math.radians(float(zone_attributes["latitude"]))
+        lon2 = math.radians(float(zone_attributes["longitude"]))
+        radius = float(zone_attributes["radius"])
+        if not all(math.isfinite(value) for value in (lat1, lon1, lat2, lon2, radius)) or radius < 0:
+            return False
+        a = (math.sin((lat2 - lat1) / 2) ** 2
+             + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2)
+        return 6371000 * 2 * math.asin(min(1.0, math.sqrt(a))) <= radius
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+
+
+def normalize_office_zones(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    """Read legacy single-zone and new multi-zone configuration."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return []
+    return list(dict.fromkeys(zone for zone in value if isinstance(zone, str) and zone.startswith("zone.")))
 
 
 def classify_day(
@@ -140,6 +168,18 @@ def normalize_day_record(
         "mixed_day": mixed_day,
         "office_seconds": round(office_seconds),
         "homeoffice_seconds": round(homeoffice_seconds),
+        "office_site_ids": list(dict.fromkeys(
+            item for item in record.get("office_site_ids", [])
+            if isinstance(item, str)
+        )) if isinstance(record.get("office_site_ids"), list) else [],
+        "automatic_office_site_ids": list(dict.fromkeys(
+            item for item in record.get("automatic_office_site_ids", record.get("office_site_ids", []))
+            if isinstance(item, str)
+        )) if isinstance(record.get("automatic_office_site_ids", record.get("office_site_ids", [])), list) else [],
+        "manual_office_site_ids": (
+            list(dict.fromkeys(item for item in record["manual_office_site_ids"] if isinstance(item, str)))
+            if isinstance(record.get("manual_office_site_ids"), list) else None
+        ),
         "change_history": [item for item in change_history if isinstance(item, dict)],
         "updated_at": record.get("updated_at") if isinstance(record.get("updated_at"), str) else None,
     }

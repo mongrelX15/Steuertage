@@ -4,15 +4,31 @@ from __future__ import annotations
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import DAY_TYPES, WorklogCoordinator
+
+
+METRIC_SENSORS = (
+    SensorEntityDescription(key="today_office_sites", translation_key="today_office_sites", icon="mdi:map-marker-multiple"),
+    SensorEntityDescription(key="homeoffice_month", translation_key="homeoffice_month", icon="mdi:home-calendar"),
+    SensorEntityDescription(key="office_month", translation_key="office_month", icon="mdi:office-building"),
+    SensorEntityDescription(key="homeoffice_year", translation_key="homeoffice_year", icon="mdi:home-calendar"),
+    SensorEntityDescription(key="office_year", translation_key="office_year", icon="mdi:office-building"),
+    SensorEntityDescription(key="open_reviews", translation_key="open_reviews", icon="mdi:clipboard-alert-outline"),
+    SensorEntityDescription(
+        key="last_detection", translation_key="last_detection",
+        icon="mdi:clock-check-outline", device_class=SensorDeviceClass.TIMESTAMP,
+    ),
+)
 
 
 async def async_setup_entry(
@@ -24,6 +40,7 @@ async def async_setup_entry(
         [
             WorklogDurationSensor(coordinator, entry),
             WorklogDaySensor(coordinator, entry),
+            *(WorklogMetricSensor(coordinator, entry, description) for description in METRIC_SENSORS),
         ]
     )
 
@@ -71,7 +88,7 @@ class WorklogDaySensor(CoordinatorEntity[WorklogCoordinator], SensorEntity):
     """Expose the effective day classification."""
 
     _attr_has_entity_name = True
-    _attr_name = "Tagestyp"
+    _attr_translation_key = "day_type"
     _attr_icon = "mdi:briefcase-clock"
     _attr_device_class = SensorDeviceClass.ENUM
 
@@ -108,4 +125,47 @@ class WorklogDaySensor(CoordinatorEntity[WorklogCoordinator], SensorEntity):
             "erkennungsgrund": data["homeoffice_reason"],
             "arbeitszone_aktiv": data["office_active"],
             "homeoffice_aktiv": data["homeoffice_active"],
+        }
+
+
+class WorklogMetricSensor(CoordinatorEntity[WorklogCoordinator], SensorEntity):
+    """Expose a person's existing effective history as native sensor states."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self, coordinator: WorklogCoordinator, entry: ConfigEntry,
+        description: SensorEntityDescription,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_device_info = _device_info(coordinator, entry)
+
+    @property
+    def native_value(self):
+        key = self.entity_description.key
+        if key == "last_detection":
+            return self.coordinator._last_update
+        if key == "today_office_sites":
+            if self.coordinator.data["date"] != dt_util.now().date().isoformat():
+                return None
+            if self.coordinator.data["day_type"] not in {"office", "office_and_home_office"}:
+                return None
+            names = self._today_site_names()
+            value = ", ".join(names)
+            return (value if len(value) <= 255 else str(len(names))) or None
+        return self.coordinator.entity_summary()[key]
+
+    def _today_site_names(self) -> list[str]:
+        sites = {site["id"]: site["name"] for site in self.coordinator.office_sites()}
+        return [sites.get(site_id, site_id) for site_id in self.coordinator.data["office_site_ids"]]
+
+    @property
+    def extra_state_attributes(self):
+        if self.entity_description.key != "today_office_sites":
+            return None
+        return {
+            "office_site_ids": list(self.coordinator.data["office_site_ids"]),
+            "office_site_names": self._today_site_names(),
         }

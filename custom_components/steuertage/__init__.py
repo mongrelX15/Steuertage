@@ -11,15 +11,19 @@ import voluptuous as vol
 from homeassistant.components import frontend, panel_custom, websocket_api
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.util import dt as dt_util
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
+    async_track_time_change,
 )
 
+from homeassistant.util import dt as dt_util
+
+from .backups import AutomaticBackups, async_full_backup, async_restore_histories, backup_people
 from .const import (
     CONF_DEVICE_TRACKER,
     CONF_HOME_ZONE,
@@ -30,6 +34,7 @@ from .const import (
 )
 from .coordinator import DAY_TYPES, WorklogCoordinator
 from .holiday_dates import calendar_holidays, supported_countries
+from .logic import normalize_office_zones
 
 PLATFORMS = ["sensor", "calendar", "binary_sensor"]
 PANEL_PATH = "steuertage"
@@ -63,11 +68,13 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
         panel_data["static_registered"] = True
 
     if not panel_data.get("backup_commands_registered"):
+        backups = panel_data["automatic_backups"] = AutomaticBackups(hass)
+
         @websocket_api.require_admin
         @websocket_api.websocket_command(
             {
                 vol.Required("type"): "steuertage/export_history",
-                vol.Required("person_entity"): str,
+                vol.Optional("person_entity"): str,
             }
         )
         @websocket_api.async_response
@@ -76,7 +83,11 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
             connection: websocket_api.ActiveConnection,
             msg: dict[str, Any],
         ) -> None:
-            """Return a per-person history backup to an administrator."""
+            """Return the full backup or one person's history to an administrator."""
+            if "person_entity" not in msg:
+                backup = await async_full_backup(hass.data.get(DOMAIN, {}).values(), dt_util.utcnow())
+                connection.send_result(msg["id"], backup)
+                return
             coordinator = next(
                 (
                     item
@@ -92,17 +103,7 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
                     "Für diese Person ist kein Verlauf eingerichtet.",
                 )
                 return
-            connection.send_result(
-                msg["id"],
-                {
-                    "format": "steuertage_backup",
-                    "version": 1,
-                    "person_entity": coordinator.person_entity,
-                    "person_name": coordinator.person_name,
-                    "created_at": dt_util.now().isoformat(),
-                    "records": coordinator.export_history(),
-                },
-            )
+            connection.send_result(msg["id"], coordinator.history_backup())
 
         @websocket_api.require_admin
         @websocket_api.websocket_command(
@@ -110,6 +111,8 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
                 vol.Required("type"): "steuertage/restore_history",
                 vol.Required("person_entity"): str,
                 vol.Required("records"): dict,
+                vol.Optional("office_sites"): list,
+                vol.Optional("next_site_number", default=1): vol.All(int, vol.Range(min=1)),
                 vol.Optional("strategy", default="merge_newer"): vol.In({"replace", "merge_newer"}),
                 vol.Optional("created_at", default=""): str,
             }
@@ -137,11 +140,7 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
                 )
                 return
             try:
-                result = await coordinator.async_restore_history(
-                    msg["records"],
-                    strategy=msg["strategy"],
-                    backup_created_at=msg["created_at"],
-                )
+                result = await async_restore_histories([(coordinator, msg)], msg["strategy"])
             except ValueError as err:
                 connection.send_error(
                     msg["id"], websocket_api.ERR_INVALID_FORMAT, str(err)
@@ -149,6 +148,125 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
                 return
             connection.send_result(msg["id"], result)
 
+        def coordinator_for_site_command(connection, msg):
+            coordinator = next(
+                (item for item in hass.data.get(DOMAIN, {}).values()
+                 if item.person_entity == msg["person_entity"]),
+                None,
+            )
+            if coordinator is None:
+                connection.send_error(
+                    msg["id"], websocket_api.ERR_NOT_FOUND,
+                    "Für diese Person ist kein Verlauf eingerichtet.",
+                )
+            return coordinator
+
+        @websocket_api.require_admin
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "steuertage/historical_office_sites",
+                vol.Required("person_entity"): str,
+                vol.Inclusive("site_id", "deletion"): str,
+                vol.Inclusive("confirmed_days", "deletion"): vol.All(int, vol.Range(min=0)),
+            }
+        )
+        @websocket_api.async_response
+        async def historical_office_sites(_hass, connection, msg):
+            """List or delete a historical site for the selected person."""
+            coordinator = coordinator_for_site_command(connection, msg)
+            if coordinator is None:
+                return
+            try:
+                if "site_id" in msg:
+                    result = await coordinator.async_delete_office_site(
+                        msg["site_id"], msg["confirmed_days"], changed_by=connection.user.id,
+                        changed_by_name=connection.user.name,
+                    )
+                else:
+                    result = coordinator.historical_office_sites()
+            except ValueError as err:
+                connection.send_error(msg["id"], websocket_api.ERR_INVALID_FORMAT, str(err))
+                return
+            connection.send_result(msg["id"], result)
+
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "steuertage/toggle_office_site",
+                vol.Required("person_entity"): str,
+                vol.Required("site_id"): str,
+                vol.Required("dates"): vol.All([str], vol.Length(min=1, max=366)),
+            }
+        )
+        @websocket_api.async_response
+        async def toggle_office_site(_hass, connection, msg):
+            """Use the same authenticated cross-person editing policy as day overrides."""
+            coordinator = coordinator_for_site_command(connection, msg)
+            if coordinator is None:
+                return
+            try:
+                result = await coordinator.async_toggle_office_site(
+                    msg["dates"], msg["site_id"], changed_by=connection.user.id,
+                    changed_by_name=connection.user.name,
+                )
+            except ValueError as err:
+                connection.send_error(msg["id"], websocket_api.ERR_INVALID_FORMAT, str(err))
+                return
+            connection.send_result(msg["id"], result)
+
+        @websocket_api.require_admin
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "steuertage/automatic_backups",
+                vol.Optional("filename"): str,
+            }
+        )
+        @websocket_api.async_response
+        async def automatic_backups(_hass, connection, msg):
+            """List automatic backups or preview a selected local file."""
+            try:
+                result = await backups.async_read(msg["filename"]) if "filename" in msg else await backups.async_list()
+            except (OSError, ValueError, RecursionError):
+                connection.send_error(
+                    msg["id"], websocket_api.ERR_INVALID_FORMAT, "Die automatische Sicherung konnte nicht gelesen werden."
+                )
+                return
+            connection.send_result(msg["id"], result)
+
+        @websocket_api.require_admin
+        @websocket_api.websocket_command(
+            {
+                vol.Required("type"): "steuertage/restore_backup",
+                vol.Exclusive("filename", "source"): str,
+                vol.Exclusive("backup", "source"): dict,
+                vol.Required("strategy"): vol.In({"replace", "merge_newer"}),
+            }
+        )
+        @websocket_api.async_response
+        async def restore_backup(_hass, connection, msg):
+            """Restore an automatic or uploaded backup through the same transaction."""
+            try:
+                backup = await backups.async_read(msg["filename"]) if "filename" in msg else msg.get("backup")
+                people = backup_people(backup)
+                available = {item.person_entity: item for item in hass.data.get(DOMAIN, {}).values()}
+                operations = [
+                    (available[person["person_entity"]], {
+                        **person, "created_at": person.get("created_at") or backup.get("created_at"),
+                    })
+                    for person in people if person["person_entity"] in available
+                ]
+                if not operations:
+                    raise ValueError("Keine Person aus dieser Sicherung ist aktuell in Steuertage eingerichtet.")
+                result = await async_restore_histories(operations, msg["strategy"])
+            except (ValueError, OSError, RecursionError) as err:
+                message = str(err) if isinstance(err, ValueError) else "Die Sicherung konnte nicht wiederhergestellt werden."
+                connection.send_error(msg["id"], websocket_api.ERR_INVALID_FORMAT, message)
+                return
+            connection.send_result(msg["id"], result)
+
+        websocket_api.async_register_command(hass, automatic_backups)
+        websocket_api.async_register_command(hass, restore_backup)
+        websocket_api.async_register_command(hass, historical_office_sites)
+        websocket_api.async_register_command(hass, toggle_office_site)
         websocket_api.async_register_command(hass, export_history)
         websocket_api.async_register_command(hass, restore_history)
         panel_data["backup_commands_registered"] = True
@@ -214,6 +332,7 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
             day = call.data["date"]
             day_type = call.data["day_type"]
             reason = call.data.get("reason", "")
+            office_site_ids = call.data.get("office_site_ids")
             changed_by = call.context.user_id
             if not changed_by:
                 raise ServiceValidationError(
@@ -242,13 +361,17 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
                 raise ServiceValidationError(
                     "Homeoffice-Tage sind für diese Person nicht aktiviert."
                 )
-            await coordinator.async_set_day_override(
-                day,
-                day_type,
-                changed_by=str(changed_by),
-                changed_by_name=user.name if user else None,
-                reason=reason,
-            )
+            try:
+                await coordinator.async_set_day_override(
+                    day,
+                    day_type,
+                    changed_by=str(changed_by),
+                    changed_by_name=user.name if user else None,
+                    reason=reason,
+                    office_site_ids=office_site_ids,
+                )
+            except ValueError as err:
+                raise ServiceValidationError(str(err)) from err
 
         hass.services.async_register(
             DOMAIN,
@@ -259,12 +382,25 @@ async def _async_setup_panel(hass: HomeAssistant) -> None:
                     vol.Required("person_entity"): str,
                     vol.Required("date"): str,
                     vol.Required("day_type"): str,
+                    vol.Optional("office_site_ids"): [str],
                     vol.Optional("reason", default=""): vol.All(
                         str, vol.Length(max=500)
                     ),
                 }
             ),
         )
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Convert existing single-zone entries without touching recorded days."""
+    if entry.version == 1:
+        data = dict(entry.data)
+        options = dict(entry.options)
+        for values in (data, options):
+            if CONF_OFFICE_ZONE in values:
+                values[CONF_OFFICE_ZONE] = normalize_office_zones(values[CONF_OFFICE_ZONE])
+        hass.config_entries.async_update_entry(entry, data=data, options=options, version=2)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -289,18 +425,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         tracked.append(coordinator.homeoffice_device_entity)
     if coordinator.legacy_signal_entity:
         tracked.append(coordinator.legacy_signal_entity)
-    if coordinator.office_zone_entity:
-        tracked.append(coordinator.office_zone_entity)
+    tracked.extend(coordinator.office_zone_entities)
     if coordinator.work_calendar_entity:
         tracked.append(coordinator.work_calendar_entity)
     remove_state_listener = async_track_state_change_event(hass, tracked, changed)
     remove_timer = async_track_time_interval(
         hass, refresh_interval, timedelta(minutes=1)
     )
+    remove_midnight = async_track_time_change(hass, refresh_interval, hour=0, minute=0, second=0)
     entry.async_on_unload(remove_state_listener)
     entry.async_on_unload(remove_timer)
+    entry.async_on_unload(remove_midnight)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     await coordinator.async_refresh()
+    panel_data = hass.data[f"{DOMAIN}_panel"]
+    if "backup_timer" not in panel_data:
+        backups = panel_data["automatic_backups"]
+        panel_data["backup_timer"] = async_track_time_interval(hass, backups.async_run, timedelta(hours=1))
+
+        async def run_after_start(_event) -> None:
+            panel_data.pop("backup_start", None)
+            await backups.async_run()
+
+        if hass.is_running:
+            hass.async_create_task(backups.async_run())
+        else:
+            panel_data["backup_start"] = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, run_after_start)
     return True
 
 
@@ -314,6 +464,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
         if not hass.data[DOMAIN]:
+            panel_data = hass.data[f"{DOMAIN}_panel"]
+            for key in ("backup_timer", "backup_start"):
+                cancel = panel_data.pop(key, None)
+                if cancel:
+                    cancel()
             frontend.async_remove_panel(hass, PANEL_PATH, warn_if_unknown=False)
             hass.services.async_remove(DOMAIN, PANEL_SERVICE)
         return True

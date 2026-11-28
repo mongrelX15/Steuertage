@@ -77,12 +77,15 @@ class WorklogCalendar(CoordinatorEntity[WorklogCoordinator], CalendarEntity):
             ),
             "worklog_entry_id": self.coordinator.entry_id,
             "worklog_home_zone_entity": self.coordinator.home_zone_entity,
-            "worklog_office_zone_entity": self.coordinator.office_zone_entity,
+            "worklog_office_zone_entity": self.coordinator.office_zone_entities[0] if self.coordinator.office_zone_entities else None,
+            "worklog_office_zone_entities": self.coordinator.office_zone_entities,
+            "worklog_office_sites": self.coordinator.panel_office_sites(),
             "worklog_device_tracker": self.coordinator.homeoffice_device_entity,
             "worklog_legacy_signal": self.coordinator.legacy_signal_entity,
             "worklog_threshold_hours": self.coordinator.threshold_hours,
             "worklog_threshold_minutes": self.coordinator.threshold_minutes,
             "worklog_homeoffice_enabled": self.coordinator.homeoffice_enabled,
+            "worklog_homeoffice_years": self.coordinator.homeoffice_years(),
             "worklog_work_calendar_entity": self.coordinator.work_calendar_entity,
             "worklog_holiday_country": self._holiday_country,
             "worklog_holiday_subdivision": self._holiday_subdivision,
@@ -139,6 +142,9 @@ class WorklogCalendar(CoordinatorEntity[WorklogCoordinator], CalendarEntity):
             description += f"\nSTEUERTAGE_PRIMARY:{day_type}"
         if manual_override:
             description += f" Manuell geändert zu: {summary}."
+        site_ids = record.get("office_site_ids", [])
+        if site_ids:
+            description += "\nSTEUERTAGE_SITES:" + json.dumps(site_ids, ensure_ascii=False, separators=(",", ":"))
         change_history = record.get("change_history", [])
         if change_history:
             description += "\nSTEUERTAGE_HISTORY:" + json.dumps(

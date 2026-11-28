@@ -1,12 +1,45 @@
 # Änderungsprotokoll
 
-## 1.0.4-beta.1
+## 1.1.0-beta.1
+
+Die neue Minor-Version erweitert Steuertage um mehrere Arbeitsstätten pro Person, personenbezogene Home-Assistant-Entitäten und automatische lokale Sicherungen. Diese Funktionen ergänzen die 1.0-Reihe abwärtskompatibel: bestehende Einzelzonen und gespeicherte Tagesdaten werden übernommen. Diese Version ist eine Vorabversion; die stabile 1.0.4 bleibt unverändert.
+
+### Neue Funktionen
+
+- **Mehrere Arbeitsstätten und Büro-Zonen pro Person:** In Einrichtung und Konfiguration lassen sich mehrere Arbeitszonen wählen. Anwesenheiten an verschiedenen Standorten werden für die Tageserkennung zusammengezählt; überlappende Zonen zählen nicht doppelt. Der optionale Arbeitskalender gilt für alle ausgewählten Arbeitszonen. Bestehende Einzelzonen werden beim Upgrade migriert.
+- **Standortzuordnung im Kalender:** Arbeitsstätten erhalten pro Person dauerhafte Nummern. Besuchte Standorte werden pro Tag gespeichert, als Kennzeichnung und Legende angezeigt und können bei einzelnen oder mehreren Bürotagen manuell zu- und abgewählt werden. Vorhandene Zuordnungen, historische Standorte und Änderungen bleiben nachvollziehbar; bei genau einem aktiven bekannten Standort erfolgt die Zuordnung automatisch. Administratoren können historische Standorte nach Sicherung und Bestätigung löschen, ohne den Tagestyp oder übrige Standorte zu verlieren.
+- **Standortauswertung und Exporte:** Jahresübersicht sowie CSV-, TXT-, HTML- und PDF-Berichte schlüsseln besuchte Standorte und Kombinationen auf. Ein Bürotag zählt insgesamt nur einmal, auch wenn mehrere Standorte zugeordnet sind. Standortnummern und zusätzliche Übersichten erscheinen nur, wenn mehrere relevante Standorte vorhanden sind.
+- **Native Entitäten pro Person:** Sensoren für heutigen Tagestyp und Arbeitsstätten, Homeoffice- und Arbeitsstätten-Tage im aktuellen Monat und Jahr, offene Überprüfungen und letzte automatische Erkennung sowie ein Binärsensor für erforderliche Überprüfungen. Die bestehende Tagestyp-Entität und ihre Unique ID bleiben erhalten; Werte aktualisieren sich nach automatischen und manuellen Änderungen sowie Wiederherstellungen.
+- **Automatische lokale Sicherungen:** Steuertage sichert die Verläufe aller Personen wöchentlich und hält automatische Sicherungen vier Wochen vor. Administratoren können sie im vorhandenen Dialog auswählen und wiederherstellen. Manuelle und automatische Sicherungen nutzen dasselbe Format samt Standortdaten und Löschprotokoll.
+
+### Funktionale Verbesserungen
+
+- Wochentage im Kalenderkopf steuern die Bereichsauswahl beim Ziehen und Umschalt-Klick; Schnellaktionen für Wochenende und alle Tage setzen die Filter. Einzeltage und Feiertage bleiben separat auswählbar.
+- Mehrfachauswahl am Desktop und auf Mobilgeräten ist klarer bedienbar; die mobile Beschriftung unterscheidet aktivierte Auswahl mit null, einem oder mehreren Tagen. Auswahl, Rückgängig und Wiederholen bleiben im Kalender zugänglich.
+- Bei manuellen Änderungen werden Standortzuordnungen gezielt auf Bürotage angewendet. Der erste aktive Standort wird für bisher unzugeordnete Bürotage gewählt; bereits vorhandene Zuordnungen bleiben erhalten.
+- Homeoffice erscheint in der Kalenderlegende nur, wenn es für die Person aktiviert ist oder im angezeigten Jahr historische Homeoffice-Tage vorhanden sind. Exporte kennzeichnen manuelle und automatische Erfassung und enthalten den Personennamen im Dateinamen.
+- Der Einrichtungsassistent und der Infodialog erläutern Arbeitszonen, gemeinsame Arbeitsstättenzeit, Mehrfachauswahl und Erkennungsablauf präziser.
+
+### Designoptimierungen
+
+- Kalenderkopf, Bereichsauswahl, Standortkennzeichen und Legende wurden auf Desktop und Mobilgeräten vereinheitlicht. Die Desktop-Legende trennt Statusgruppen horizontal; mobile Tagesfelder sind luftiger und Verlaufsbuttons kompakter.
+- Einheitliche Hover- und Fokuszustände für Schaltflächen und Datumsfelder; deutliche Auswahlumrandung und bessere Bedienung fokussierter Buttons ohne Größenänderung.
+- Die Monatsübersicht zeigt Dienstreisen nur bei vorhandenen Einträgen. Die Standortauswahl erscheint nur bei relevanten Bürotagen; der redundante Desktop-Hinweis entfällt. Der Infodialog hat einen zentrierten Schließen-Button und Links zur freiwilligen Projektunterstützung.
+
+### Fehlerbehebungen
+
+- Automatische und manuelle Standortzuordnungen bleiben nach Neustart und Rückkehr zur Automatik erhalten. Gemischte Mehrfachauswahlen ändern nur die ausgewählten Bürotage.
+- PDF-Spalten und Monatsüberschriften brechen bei Bedarf korrekt um. Leere Hinweisspalten werden in Exporten ausgelassen.
+- Assistentenbeschreibungen enthalten in Deutsch und Englisch keine sichtbaren Markdown-Links oder Codeformatierung für Netzwerkintegrationen und Gerätetracker mehr; Regressionstests sichern dies ab.
+- Regressionstests prüfen zusätzlich die Zustände der mobilen und Desktop-Mehrfachauswahl, Entitätskennungen, personenbezogene Auswertungen und Sicherungswiederherstellung.
+
+## 1.0.4
 
 - Gesetzliche Feiertage nach Land und Region im Kalender anzeigen.
 - Dienstreisen als Tagestyp erfassen und auswerten.
 - Tagestypen direkt unter dem Kalender bearbeiten und einzelne Tage per erneutem Antippen abwählen.
 - PDF-, HTML-, TXT- und CSV-Exporte mit Gesamtsummen, Tagesprotokoll und Versionsangabe.
-- Die Vorabversion ist im App-Header mit BETA gekennzeichnet.
+- Kompatibilität der Feiertagsbibliothek mit Home Assistant und Hilfelinks im Einrichtungsassistenten korrigiert.
 
 ## 1.0.2
 

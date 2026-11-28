@@ -3,10 +3,10 @@
     "step": {
       "user": {
         "title": "Set up Steuertage",
-        "description": "Set up Steuertage for one person.\n\n**Work location.** Set up a zone for your workplace in Home Assistant and select a person with location tracking, for example via the Home Assistant Companion app. The threshold is the minimum time in the work zone or, if enabled, the home zone before Steuertage counts a day automatically (default: 2 hours).",
+        "description": "Set up Steuertage for one person.\n\n**Work location.** Set up one or more workplace zones in Home Assistant and select a person with location tracking, for example via the Home Assistant Companion app. The threshold is the minimum time in any work zone or, if enabled, the home zone before Steuertage counts a day automatically (default: 2 hours).",
         "data": {
           "person_entity": "Person",
-          "office_zone": "Work location (zone)",
+          "office_zone": "Work locations (zones)",
           "threshold_hours": "Minimum time before a day counts (hours; default 2)"
         },
         "sections": {
@@ -17,7 +17,7 @@
               "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
               "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)"
             },
-            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (`device_tracker`) for your work computer. A network integration such as [FRITZ!Box Tools]({fritz_url}) or [UniFi Network]({unifi_url}) can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
+            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (device_tracker) for your work computer. A network integration such as FRITZ!Box Tools or UniFi Network can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
           },
           "work_calendar": {
             "name": "Work calendar",
@@ -25,7 +25,7 @@
               "work_calendar_enabled": "Use a work calendar",
               "work_calendar": "Select calendar"
             },
-            "description": "Optional. Select a calendar from Home Assistant to count time in the work zone only during scheduled work events."
+            "description": "Optional. Select a calendar from Home Assistant to count time in any work zone only during scheduled work events."
           },
           "holidays": {
             "name": "Public holidays",
@@ -77,7 +77,7 @@
         "description": "Update the person, work location or threshold, then continue with the optional features.",
         "data": {
           "person_entity": "Person",
-          "office_zone": "Work location (zone)",
+          "office_zone": "Work locations (zones)",
           "threshold_hours": "Minimum duration per signal (hours; default 2)"
         }
       }
@@ -101,9 +101,9 @@
     "step": {
       "init": {
         "title": "Steuertage settings",
-        "description": "Adjust the settings for this person.\n\n**Work location.** Set up a zone for your workplace in Home Assistant and select a person with location tracking, for example via the Home Assistant Companion app. The threshold is the minimum time in the work zone or, if enabled, the home zone before Steuertage counts a day automatically (default: 2 hours).",
+        "description": "Adjust the settings for this person.\n\n**Work location.** Set up one or more workplace zones in Home Assistant and select a person with location tracking, for example via the Home Assistant Companion app. The threshold is the minimum time in any work zone or, if enabled, the home zone before Steuertage counts a day automatically (default: 2 hours).",
         "data": {
-          "office_zone": "Work location (zone)",
+          "office_zone": "Work locations (zones)",
           "threshold_hours": "Minimum time before a day counts (hours; default 2)"
         },
         "sections": {
@@ -114,7 +114,7 @@
               "home_zone": "Home zone (optional; required when Homeoffice detection is enabled)",
               "homeoffice_device": "Homeoffice device (optional; required when Homeoffice detection is enabled)"
             },
-            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (`device_tracker`) for your work computer. A network integration such as [FRITZ!Box Tools]({fritz_url}) or [UniFi Network]({unifi_url}) can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
+            "description": "For automatic Homeoffice detection, select a zone for your home and the device tracker (device_tracker) for your work computer. A network integration such as FRITZ!Box Tools or UniFi Network can show when the computer is on your home network. Steuertage counts time while both the person and the work computer are detected at home."
           },
           "work_calendar": {
             "name": "Work calendar",
@@ -122,7 +122,7 @@
               "work_calendar_enabled": "Use a work calendar",
               "work_calendar": "Select calendar"
             },
-            "description": "Optional. Select a calendar from Home Assistant to count time in the work zone only during scheduled work events."
+            "description": "Optional. Select a calendar from Home Assistant to count time in any work zone only during scheduled work events."
           },
           "holidays": {
             "name": "Public holidays",
@@ -184,6 +184,51 @@
       "user_already_configured": "This legacy Home Assistant user mapping is already assigned to another person.",
       "holiday_country_required": "Select a country to show public holidays.",
       "holiday_subdivision_invalid": "This region code is not supported for the selected country."
+    }
+  }
+,
+  "entity": {
+    "sensor": {
+      "day_type": {
+        "name": "Today's day type",
+        "state": {
+          "no_work": "No work day",
+          "tracking": "Detection in progress",
+          "home_office": "Home office",
+          "office": "Office",
+          "office_and_home_office": "Office and home office",
+          "needs_review": "Needs review",
+          "business_trip": "Business trip",
+          "vacation": "Vacation",
+          "sick_leave": "Sick leave"
+        }
+      },
+      "today_office_sites": {
+        "name": "Today's work locations"
+      },
+      "homeoffice_month": {
+        "name": "Home office days this month"
+      },
+      "office_month": {
+        "name": "Office days this month"
+      },
+      "homeoffice_year": {
+        "name": "Home office days this year"
+      },
+      "office_year": {
+        "name": "Office days this year"
+      },
+      "open_reviews": {
+        "name": "Open reviews"
+      },
+      "last_detection": {
+        "name": "Last automatic detection"
+      }
+    },
+    "binary_sensor": {
+      "review_required": {
+        "name": "Review required"
+      }
     }
   }
 }
